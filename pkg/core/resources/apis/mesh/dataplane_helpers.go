@@ -6,8 +6,8 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	util_proto "github.com/Kong/kuma/pkg/util/proto"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	util_proto "github.com/kumahq/kuma/pkg/util/proto"
 )
 
 // Protocol identifies a protocol supported by a service.
@@ -17,14 +17,23 @@ const (
 	ProtocolUnknown = "<unknown>"
 	ProtocolTCP     = "tcp"
 	ProtocolHTTP    = "http"
+	ProtocolHTTP2   = "http2"
+	ProtocolGRPC    = "grpc"
+	ProtocolKafka   = "kafka"
 )
 
 func ParseProtocol(tag string) Protocol {
 	switch strings.ToLower(tag) {
 	case ProtocolHTTP:
 		return ProtocolHTTP
+	case ProtocolHTTP2:
+		return ProtocolHTTP2
 	case ProtocolTCP:
 		return ProtocolTCP
+	case ProtocolGRPC:
+		return ProtocolGRPC
+	case ProtocolKafka:
+		return ProtocolKafka
 	default:
 		return ProtocolUnknown
 	}
@@ -43,14 +52,18 @@ func (l ProtocolList) Strings() []string {
 
 // SupportedProtocols is a list of supported protocols that will be communicated to a user.
 var SupportedProtocols = ProtocolList{
+	ProtocolGRPC,
 	ProtocolHTTP,
+	ProtocolHTTP2,
+	ProtocolKafka,
 	ProtocolTCP,
 }
 
 // Service that indicates L4 pass through cluster
 const PassThroughService = "pass_through"
 
-var ipv4loopback = net.IPv4(127, 0, 0, 1)
+var IPv4Loopback = net.IPv4(127, 0, 0, 1)
+var IPv6Loopback = net.IPv6loopback
 
 func (d *DataplaneResource) UsesInterface(address net.IP, port uint32) bool {
 	return d.UsesInboundInterface(address, port) || d.UsesOutboundInterface(address, port)
@@ -70,7 +83,7 @@ func (d *DataplaneResource) UsesInboundInterface(address net.IP, port uint32) bo
 			return true
 		}
 		// compare against port and IP address of the application
-		if port == iface.WorkloadPort && overlap(address, ipv4loopback) {
+		if port == iface.WorkloadPort && overlap(address, net.ParseIP(iface.WorkloadIP)) {
 			return true
 		}
 	}
@@ -108,14 +121,14 @@ func (d *DataplaneResource) GetPrometheusEndpoint(mesh *MeshResource) (*mesh_pro
 		return nil, nil
 	}
 	cfg := mesh_proto.PrometheusMetricsBackendConfig{}
-	strCfg := mesh.GetEnabledMetricsBackend().Config
+	strCfg := mesh.GetEnabledMetricsBackend().Conf
 	if err := util_proto.ToTyped(strCfg, &cfg); err != nil {
 		return nil, err
 	}
 
 	if d.Spec.GetMetrics().GetType() == mesh_proto.MetricsPrometheusType {
 		dpCfg := mesh_proto.PrometheusMetricsBackendConfig{}
-		if err := util_proto.ToTyped(d.Spec.Metrics.Config, &dpCfg); err != nil {
+		if err := util_proto.ToTyped(d.Spec.Metrics.Conf, &dpCfg); err != nil {
 			return nil, err
 		}
 		proto.Merge(&cfg, &dpCfg)
@@ -127,16 +140,18 @@ func (d *DataplaneResource) GetIP() string {
 	if d == nil {
 		return ""
 	}
-	if d.Spec.Networking.Address != "" {
-		return d.Spec.Networking.Address
+	return d.Spec.Networking.Address
+}
+
+func (d *DataplaneResource) IsIPv6() bool {
+	if d == nil {
+		return false
 	}
-	// fallback to legacy format
-	if len(d.Spec.Networking.Inbound) == 0 {
-		return ""
+
+	ip := net.ParseIP(d.Spec.Networking.Address)
+	if ip == nil {
+		return false
 	}
-	iface, err := d.Spec.Networking.GetInboundInterfaceByIdx(0)
-	if err != nil {
-		return ""
-	}
-	return iface.DataplaneIP
+
+	return ip.To4() == nil
 }

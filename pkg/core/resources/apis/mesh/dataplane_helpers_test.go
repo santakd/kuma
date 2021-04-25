@@ -7,12 +7,13 @@ import (
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	. "github.com/Kong/kuma/pkg/core/resources/apis/mesh"
+	. "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	. "github.com/kumahq/kuma/pkg/test/matchers"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
 
-	test_model "github.com/Kong/kuma/pkg/test/resources/model"
-	util_proto "github.com/Kong/kuma/pkg/util/proto"
+	test_model "github.com/kumahq/kuma/pkg/test/resources/model"
+	util_proto "github.com/kumahq/kuma/pkg/util/proto"
 )
 
 var _ = Describe("Dataplane", func() {
@@ -29,10 +30,10 @@ var _ = Describe("Dataplane", func() {
 		DescribeTable("should correctly determine whether a given (ip, port) endpoint would overshadow one of Dataplane interfaces",
 			func(given testCase) {
 				// given
-				dataplane := &DataplaneResource{}
+				dataplane := NewDataplaneResource()
 
 				// when
-				Expect(util_proto.FromYAML([]byte(given.dataplane), &dataplane.Spec)).To(Succeed())
+				Expect(util_proto.FromYAML([]byte(given.dataplane), dataplane.Spec)).To(Succeed())
 				// then
 				Expect(dataplane.UsesInterface(net.ParseIP(given.address), given.port)).To(Equal(given.expected))
 			},
@@ -265,15 +266,16 @@ var _ = Describe("Dataplane", func() {
 		DescribeTable("should correctly determine effective Prometheus config for given Dataplane and Mesh",
 			func(given testCase) {
 				// given
-				var dataplane *DataplaneResource
+				dataplane := NewDataplaneResource()
 				if given.dataplaneName != "" {
 					dataplane = &DataplaneResource{
 						Meta: &test_model.ResourceMeta{
 							Name: given.dataplaneName,
 							Mesh: given.dataplaneMesh,
 						},
+						Spec: &mesh_proto.Dataplane{},
 					}
-					Expect(util_proto.FromYAML([]byte(given.dataplaneSpec), &dataplane.Spec)).To(Succeed())
+					Expect(util_proto.FromYAML([]byte(given.dataplaneSpec), dataplane.Spec)).To(Succeed())
 				}
 
 				// given
@@ -283,14 +285,15 @@ var _ = Describe("Dataplane", func() {
 						Meta: &test_model.ResourceMeta{
 							Name: given.meshName,
 						},
+						Spec: &mesh_proto.Mesh{},
 					}
-					Expect(util_proto.FromYAML([]byte(given.meshSpec), &mesh.Spec)).To(Succeed())
+					Expect(util_proto.FromYAML([]byte(given.meshSpec), mesh.Spec)).To(Succeed())
 				}
 
 				// then
 				endpoint, err := dataplane.GetPrometheusEndpoint(mesh)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(endpoint).To(Equal(given.expected))
+				Expect(endpoint).To(MatchProto(given.expected))
 			},
 			Entry("dataplane == `nil` && mesh == `nil`", testCase{
 				expected: nil,
@@ -300,7 +303,7 @@ var _ = Describe("Dataplane", func() {
 				dataplaneSpec: `
                 metrics:
                   type: prometheus
-                  config:
+                  conf:
                     port: 8765
                     path: /even-more-non-standard-path
 `,
@@ -316,7 +319,7 @@ var _ = Describe("Dataplane", func() {
                   backends:
                   - name: prometheus-1
                     type: prometheus
-                    config:
+                    conf:
                       port: 1234
                       path: /non-standard-path
 `,
@@ -328,7 +331,7 @@ var _ = Describe("Dataplane", func() {
 				dataplaneSpec: `
                 metrics:
                   type: prometheus
-                  config:
+                  conf:
                     port: 8765
                     path: /even-more-non-standard-path
 `,
@@ -345,7 +348,7 @@ var _ = Describe("Dataplane", func() {
                   backends:
                   - name: prometheus-1
                     type: prometheus
-                    config:
+                    conf:
                       port: 1234
                       path: /non-standard-path
 `,
@@ -360,7 +363,7 @@ var _ = Describe("Dataplane", func() {
 				dataplaneSpec: `
                 metrics:
                   type: prometheus
-                  config:
+                  conf:
                     port: 8765
                     path: /even-more-non-standard-path
 `,
@@ -371,7 +374,7 @@ var _ = Describe("Dataplane", func() {
                   backends:
                   - name: prometheus-1
                     type: prometheus
-                    config:
+                    conf:
                       port: 1234
                       path: /non-standard-path
 `,
@@ -395,8 +398,8 @@ var _ = Describe("Dataplane", func() {
 				// given
 				var dataplane *DataplaneResource
 				if given.dataplane != "" {
-					dataplane = &DataplaneResource{}
-					Expect(util_proto.FromYAML([]byte(given.dataplane), &dataplane.Spec)).To(Succeed())
+					dataplane = NewDataplaneResource()
+					Expect(util_proto.FromYAML([]byte(given.dataplane), dataplane.Spec)).To(Succeed())
 				}
 
 				// expect
@@ -420,30 +423,7 @@ var _ = Describe("Dataplane", func() {
                   - port: 8080
                     address: 192.168.0.2
                     tags:
-                      service: backend
-`,
-				expected: "192.168.0.1",
-			}),
-			Entry("legacy - dataplane with 1 inbound interface", testCase{
-				dataplane: `
-                networking:
-                  inbound:
-                  - interface: 192.168.0.1:80:8080
-                    tags:
-                      service: backend
-`,
-				expected: "192.168.0.1",
-			}),
-			Entry("legacy - dataplane with 2 inbound interfaces", testCase{
-				dataplane: `
-                networking:
-                  inbound:
-                  - interface: 192.168.0.1:80:8080
-                    tags:
-                      service: backend
-                  - interface: 192.168.0.2:443:8443
-                    tags:
-                      service: backend-https
+                      kuma.io/service: backend
 `,
 				expected: "192.168.0.1",
 			}),
@@ -453,15 +433,85 @@ var _ = Describe("Dataplane", func() {
                   inbound:
                   - interface: x.y.z.0
                     tags:
-                      service: backend-https
+                      kuma.io/service: backend-https
                   - interface: 192.168.0.1:80:8080
                     tags:
-                      service: backend
+                      kuma.io/service: backend
 `,
 				expected: "",
 			}),
 		)
 	})
+
+	Describe("IsIPv6()", func() {
+
+		type testCase struct {
+			dataplane string
+			expected  bool
+		}
+
+		DescribeTable("should correctly determine IP for a given Dataplane",
+			func(given testCase) {
+				// given
+				var dataplane *DataplaneResource
+				if given.dataplane != "" {
+					dataplane = NewDataplaneResource()
+					Expect(util_proto.FromYAML([]byte(given.dataplane), dataplane.Spec)).To(Succeed())
+				}
+
+				// expect
+				Expect(dataplane.IsIPv6()).To(Equal(given.expected))
+			},
+			Entry("`nil` dataplane", testCase{
+				dataplane: ``,
+				expected:  false,
+			}),
+			Entry("dataplane without inbound interfaces", testCase{
+				dataplane: `
+                networking: {}
+`,
+				expected: false,
+			}),
+			Entry("dataplane with IPv4 address in networking", testCase{
+				dataplane: `
+                networking:
+                  address: 192.168.0.1
+                  inbound:
+                  - port: 8080
+                    address: 192.168.0.2
+                    tags:
+                      kuma.io/service: backend
+`,
+				expected: false,
+			}),
+			Entry("dataplane with IPv6 address in networking", testCase{
+				dataplane: `
+                networking:
+                  address: fd00::123
+                  inbound:
+                  - port: 8080
+                    address: 192.168.0.2
+                    tags:
+                      kuma.io/service: backend
+`,
+				expected: true,
+			}),
+			Entry("dataplane with invalid inbound interface", testCase{
+				dataplane: `
+                networking:
+                  inbound:
+                  - interface: x.y.z.0
+                    tags:
+                      kuma.io/service: backend-https
+                  - interface: 192.168.0.1:80:8080
+                    tags:
+                      kuma.io/service: backend
+`,
+				expected: false,
+			}),
+		)
+	})
+
 })
 
 var _ = Describe("ParseProtocol()", func() {
@@ -485,11 +535,15 @@ var _ = Describe("ParseProtocol()", func() {
 		}),
 		Entry("http2", testCase{
 			tag:      "http2",
-			expected: ProtocolUnknown,
+			expected: ProtocolHTTP2,
 		}),
 		Entry("grpc", testCase{
 			tag:      "grpc",
-			expected: ProtocolUnknown,
+			expected: ProtocolGRPC,
+		}),
+		Entry("kafka", testCase{
+			tag:      "kafka",
+			expected: ProtocolKafka,
 		}),
 		Entry("mongo", testCase{
 			tag:      "mongo",
@@ -508,5 +562,4 @@ var _ = Describe("ParseProtocol()", func() {
 			expected: ProtocolUnknown,
 		}),
 	)
-
 })

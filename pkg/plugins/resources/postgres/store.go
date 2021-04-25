@@ -8,13 +8,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
+	common_postgres "github.com/kumahq/kuma/pkg/plugins/common/postgres"
+
 	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
 
-	config "github.com/Kong/kuma/pkg/config/plugins/resources/postgres"
-	"github.com/Kong/kuma/pkg/core/resources/model"
-	"github.com/Kong/kuma/pkg/core/resources/store"
-	"github.com/Kong/kuma/pkg/util/proto"
+	config "github.com/kumahq/kuma/pkg/config/plugins/resources/postgres"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
+	"github.com/kumahq/kuma/pkg/core/resources/store"
+	core_metrics "github.com/kumahq/kuma/pkg/metrics"
+	"github.com/kumahq/kuma/pkg/util/proto"
 )
 
 const duplicateKeyErrorMsg = "duplicate key value violates unique constraint"
@@ -25,52 +30,19 @@ type postgresResourceStore struct {
 
 var _ store.ResourceStore = &postgresResourceStore{}
 
-func NewStore(config config.PostgresStoreConfig) (store.ResourceStore, error) {
-	db, err := connectToDb(config)
+func NewStore(metrics core_metrics.Metrics, config config.PostgresStoreConfig) (store.ResourceStore, error) {
+	db, err := common_postgres.ConnectToDb(config)
 	if err != nil {
 		return nil, err
+	}
+
+	if err := registerMetrics(metrics, db); err != nil {
+		return nil, errors.Wrapf(err, "could not register DB metrics")
 	}
 
 	return &postgresResourceStore{
 		db: db,
 	}, nil
-}
-
-func connectToDb(cfg config.PostgresStoreConfig) (*sql.DB, error) {
-	mode, err := postgresMode(cfg.TLS.Mode)
-	if err != nil {
-		return nil, err
-	}
-	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s connect_timeout=%d sslmode=%s sslcert=%s sslkey=%s sslrootcert=%s",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DbName, cfg.ConnectionTimeout, mode, cfg.TLS.CertPath, cfg.TLS.KeyPath, cfg.TLS.CAPath)
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		return nil, errors.Wrap(err, "cannot create connection to DB")
-	}
-
-	db.SetMaxOpenConns(cfg.MaxOpenConnections)
-
-	// check connection to DB, Open() does not check it.
-	if err := db.Ping(); err != nil {
-		return nil, errors.Wrap(err, "cannot connect to DB")
-	}
-
-	return db, nil
-}
-
-func postgresMode(mode config.TLSMode) (string, error) {
-	switch mode {
-	case config.Disable:
-		return "disable", nil
-	case config.VerifyNone:
-		return "require", nil
-	case config.VerifyCa:
-		return "verify-ca", nil
-	case config.VerifyFull:
-		return "verify-full", nil
-	default:
-		return "", errors.Errorf("could not translate mode %q to postgres mode", mode)
-	}
 }
 
 func (r *postgresResourceStore) Create(_ context.Context, resource model.Resource, fs ...store.CreateOptionsFunc) error {
@@ -81,9 +53,21 @@ func (r *postgresResourceStore) Create(_ context.Context, resource model.Resourc
 		return errors.Wrap(err, "failed to convert spec to json")
 	}
 
+	var ownerName *string
+	var ownerMesh *string
+	var ownerType *string
+
+	if opts.Owner != nil {
+		ptr := func(s string) *string { return &s }
+		ownerName = ptr(opts.Owner.GetMeta().GetName())
+		ownerMesh = ptr(opts.Owner.GetMeta().GetMesh())
+		ownerType = ptr(string(opts.Owner.GetType()))
+	}
+
 	version := 0
-	statement := `INSERT INTO resources VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`
-	_, err = r.db.Exec(statement, opts.Name, "", opts.Mesh, resource.GetType(), version, string(bytes), opts.CreationTime, opts.CreationTime)
+	statement := `INSERT INTO resources VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`
+	_, err = r.db.Exec(statement, opts.Name, opts.Mesh, resource.GetType(), version, string(bytes),
+		opts.CreationTime.UTC(), opts.CreationTime.UTC(), ownerName, ownerMesh, ownerType)
 	if err != nil {
 		if strings.Contains(err.Error(), duplicateKeyErrorMsg) {
 			return store.ErrorResourceAlreadyExists(resource.GetType(), opts.Name, opts.Mesh)
@@ -119,7 +103,7 @@ func (r *postgresResourceStore) Update(_ context.Context, resource model.Resourc
 		statement,
 		string(bytes),
 		newVersion,
-		opts.ModificationTime,
+		opts.ModificationTime.UTC(),
 		resource.GetMeta().GetName(),
 		resource.GetMeta().GetMesh(),
 		resource.GetType(),
@@ -183,8 +167,8 @@ func (r *postgresResourceStore) Get(_ context.Context, resource model.Resource, 
 		Name:             opts.Name,
 		Mesh:             opts.Mesh,
 		Version:          strconv.Itoa(version),
-		CreationTime:     creationTime,
-		ModificationTime: modificationTime,
+		CreationTime:     creationTime.Local(),
+		ModificationTime: modificationTime.Local(),
 	}
 	resource.SetMeta(meta)
 
@@ -208,47 +192,25 @@ func (r *postgresResourceStore) List(_ context.Context, resources model.Resource
 	}
 	statement += " ORDER BY name, mesh"
 
-	paginateResults := opts.PageSize != 0
-	offset := 0
-	if opts.PageOffset != "" {
-		o, err := strconv.Atoi(opts.PageOffset)
-		if err != nil {
-			return store.ErrorInvalidOffset
-		}
-		offset = o
-	}
-	if paginateResults {
-		statement += fmt.Sprintf(" LIMIT %d OFFSET %d", opts.PageSize+1, offset) // ask for +1 to check if there are any elements left
-	}
-
 	rows, err := r.db.Query(statement, statementArgs...)
 	if err != nil {
 		return errors.Wrapf(err, "failed to execute query: %s", statement)
 	}
 	defer rows.Close()
-	items := 0
+
+	total := 0
 	for rows.Next() {
 		item, err := rowToItem(resources, rows)
 		if err != nil {
 			return err
 		}
-		if !paginateResults || items < opts.PageSize {
-			if err := resources.AddItem(item); err != nil {
-				return err
-			}
+		if err := resources.AddItem(item); err != nil {
+			return err
 		}
-		items++
+		total++
 	}
 
-	if paginateResults {
-		nextOffset := ""
-		if items > opts.PageSize { // set new offset only if there is next page
-			nextOffset = strconv.Itoa(offset + opts.PageSize)
-		}
-		resources.SetPagination(model.Pagination{
-			NextOffset: nextOffset,
-		})
-	}
+	resources.GetPagination().SetTotal(uint32(total))
 	return nil
 }
 
@@ -266,9 +228,11 @@ func rowToItem(resources model.ResourceList, rows *sql.Rows) (model.Resource, er
 	}
 
 	meta := &resourceMetaObject{
-		Name:    name,
-		Mesh:    mesh,
-		Version: strconv.Itoa(version),
+		Name:             name,
+		Mesh:             mesh,
+		Version:          strconv.Itoa(version),
+		CreationTime:     creationTime.Local(),
+		ModificationTime: modificationTime.Local(),
 	}
 	item.SetMeta(meta)
 
@@ -311,4 +275,95 @@ func (r *resourceMetaObject) GetCreationTime() time.Time {
 
 func (r *resourceMetaObject) GetModificationTime() time.Time {
 	return r.ModificationTime
+}
+
+func registerMetrics(metrics core_metrics.Metrics, db *sql.DB) error {
+	postgresCurrentConnectionMetric := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "store_postgres_connections",
+		Help: "Current number of postgres store connections",
+		ConstLabels: map[string]string{
+			"type": "open_connections",
+		},
+	}, func() float64 {
+		return float64(db.Stats().OpenConnections)
+	})
+
+	postgresInUseConnectionMetric := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "store_postgres_connections",
+		Help: "Current number of postgres store connections",
+		ConstLabels: map[string]string{
+			"type": "in_use",
+		},
+	}, func() float64 {
+		return float64(db.Stats().InUse)
+	})
+
+	postgresIdleConnectionMetric := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "store_postgres_connections",
+		Help: "Current number of postgres store connections",
+		ConstLabels: map[string]string{
+			"type": "idle",
+		},
+	}, func() float64 {
+		return float64(db.Stats().Idle)
+	})
+
+	postgresMaxOpenConnectionMetric := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "store_postgres_connections_max",
+		Help: "Max postgres store open connections",
+	}, func() float64 {
+		return float64(db.Stats().MaxOpenConnections)
+	})
+
+	postgresWaitConnectionMetric := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "store_postgres_connection_wait_count",
+		Help: "Current waiting postgres store connections",
+	}, func() float64 {
+		return float64(db.Stats().WaitCount)
+	})
+
+	postgresWaitConnectionDurationMetric := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "store_postgres_connection_wait_duration",
+		Help: "Time Blocked waiting for new connection in seconds",
+	}, func() float64 {
+		return db.Stats().WaitDuration.Seconds()
+	})
+
+	postgresMaxIdleClosedConnectionMetric := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "store_postgres_connection_closed",
+		Help: "Current number of closed postgres store connections",
+		ConstLabels: map[string]string{
+			"type": "max_idle_conns",
+		},
+	}, func() float64 {
+		return float64(db.Stats().MaxIdleClosed)
+	})
+
+	postgresMaxIdleTimeClosedConnectionMetric := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "store_postgres_connection_closed",
+		Help: "Current number of closed postgres store connections",
+		ConstLabels: map[string]string{
+			"type": "conn_max_idle_time",
+		},
+	}, func() float64 {
+		return float64(db.Stats().MaxIdleTimeClosed)
+	})
+
+	postgresMaxLifeTimeClosedConnectionMetric := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "store_postgres_connection_closed",
+		Help: "Current number of closed postgres store connections",
+		ConstLabels: map[string]string{
+			"type": "conn_max_life_time",
+		},
+	}, func() float64 {
+		return float64(db.Stats().MaxLifetimeClosed)
+	})
+
+	if err := metrics.
+		BulkRegister(postgresCurrentConnectionMetric, postgresInUseConnectionMetric, postgresIdleConnectionMetric,
+			postgresMaxOpenConnectionMetric, postgresWaitConnectionMetric, postgresWaitConnectionDurationMetric,
+			postgresMaxIdleClosedConnectionMetric, postgresMaxIdleTimeClosedConnectionMetric, postgresMaxLifeTimeClosedConnectionMetric); err != nil {
+		return err
+	}
+	return nil
 }

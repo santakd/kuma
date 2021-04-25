@@ -10,10 +10,12 @@ import (
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	"github.com/Kong/kuma/pkg/config"
-	conf "github.com/Kong/kuma/pkg/config/plugins/runtime/k8s"
-	"github.com/Kong/kuma/pkg/plugins/resources/k8s/native/api/v1alpha1"
-	inject "github.com/Kong/kuma/pkg/plugins/runtime/k8s/webhooks/injector"
+	"github.com/kumahq/kuma/pkg/config"
+	conf "github.com/kumahq/kuma/pkg/config/plugins/runtime/k8s"
+	"github.com/kumahq/kuma/pkg/plugins/resources/k8s"
+	"github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/api/v1alpha1"
+	inject "github.com/kumahq/kuma/pkg/plugins/runtime/k8s/webhooks/injector"
+	"github.com/kumahq/kuma/pkg/test/matchers"
 
 	kube_core "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -23,17 +25,11 @@ import (
 
 var _ = Describe("Injector", func() {
 
-	var injector *inject.KumaInjector
-
-	BeforeEach(func() {
-		var cfg conf.Injector
-		Expect(config.Load(filepath.Join("testdata", "inject.config.yaml"), &cfg)).To(Succeed())
-		injector = inject.New(cfg, "http://kuma-control-plane.kuma-system:5681", k8sClient)
-	})
-
 	type testCase struct {
-		num  string
-		mesh string
+		num       string
+		mesh      string
+		cfgFile   string
+		namespace string
 	}
 
 	BeforeEach(func() {
@@ -47,12 +43,22 @@ var _ = Describe("Injector", func() {
 			inputFile := filepath.Join("testdata", fmt.Sprintf("inject.%s.input.yaml", given.num))
 			goldenFile := filepath.Join("testdata", fmt.Sprintf("inject.%s.golden.yaml", given.num))
 
+			var cfg conf.Injector
+			Expect(config.Load(filepath.Join("testdata", given.cfgFile), &cfg)).To(Succeed())
+			cfg.CaCertFile = filepath.Join("..", "..", "..", "..", "..", "..", "test", "certs", "server-cert.pem")
+			injector, err := inject.New(cfg, "http://kuma-control-plane.kuma-system:5681", k8sClient, k8s.NewSimpleConverter())
+			Expect(err).ToNot(HaveOccurred())
+
 			// and create mesh
 			decoder := serializer.NewCodecFactory(k8sClientScheme).UniversalDeserializer()
-			obj, _, err := decoder.Decode([]byte(given.mesh), nil, nil)
-			Expect(err).ToNot(HaveOccurred())
-			err = k8sClient.Create(context.Background(), obj)
-			Expect(err).ToNot(HaveOccurred())
+			obj, _, errMesh := decoder.Decode([]byte(given.mesh), nil, nil)
+			Expect(errMesh).ToNot(HaveOccurred())
+			errCreate := k8sClient.Create(context.Background(), obj)
+			Expect(errCreate).ToNot(HaveOccurred())
+			ns, _, errNs := decoder.Decode([]byte(given.namespace), nil, nil)
+			Expect(errNs).ToNot(HaveOccurred())
+			errUpd := k8sClient.Update(context.Background(), ns)
+			Expect(errUpd).ToNot(HaveOccurred())
 
 			// given
 			pod := &kube_core.Pod{}
@@ -80,12 +86,7 @@ var _ = Describe("Injector", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			By("comparing actual against golden")
-			// when
-			expected, err := ioutil.ReadFile(goldenFile)
-			// then
-			Expect(err).ToNot(HaveOccurred())
-			// and
-			Expect(actual).To(MatchYAML(expected))
+			Expect(actual).To(matchers.MatchGoldenYAML(goldenFile))
 		},
 		Entry("01. Pod without init containers and annotations", testCase{
 			num: "01",
@@ -94,6 +95,14 @@ var _ = Describe("Injector", func() {
               kind: Mesh
               metadata:
                 name: default`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.config.yaml",
 		}),
 		Entry("02. Pod with init containers and annotations", testCase{
 			num: "02",
@@ -102,6 +111,14 @@ var _ = Describe("Injector", func() {
               kind: Mesh
               metadata:
                 name: default`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.config.yaml",
 		}),
 		Entry("03. Pod without Namespace and Name", testCase{
 			num: "03",
@@ -110,6 +127,14 @@ var _ = Describe("Injector", func() {
               kind: Mesh
               metadata:
                 name: default`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.config.yaml",
 		}),
 		Entry("04. Pod with explicitly selected Mesh", testCase{
 			num: "04",
@@ -118,6 +143,14 @@ var _ = Describe("Injector", func() {
               kind: Mesh
               metadata:
                 name: demo`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.config.yaml",
 		}),
 		Entry("05. Pod without ServiceAccount token", testCase{
 			num: "05",
@@ -126,6 +159,14 @@ var _ = Describe("Injector", func() {
               kind: Mesh
               metadata:
                 name: default`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.config.yaml",
 		}),
 		Entry("06. Pod with kuma.io/gateway annotation", testCase{
 			num: "06",
@@ -134,6 +175,14 @@ var _ = Describe("Injector", func() {
               kind: Mesh
               metadata:
                 name: default`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.config.yaml",
 		}),
 		Entry("07. Pod with mesh with metrics enabled", testCase{
 			num: "07",
@@ -147,6 +196,14 @@ var _ = Describe("Injector", func() {
                   prometheus:
                     port: 1234
                     path: /metrics`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.config.yaml",
 		}),
 		Entry("08. Pod with prometheus annotation already defined so injector won't override those", testCase{
 			num: "08",
@@ -160,6 +217,14 @@ var _ = Describe("Injector", func() {
                   prometheus:
                     port: 1234
                     path: /metrics`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.config.yaml",
 		}),
 		Entry("09. Pod with Kuma metrics annotation overrides", testCase{
 			num: "09",
@@ -173,6 +238,14 @@ var _ = Describe("Injector", func() {
                   prometheus:
                     port: 1234
                     path: /metrics`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.config.yaml",
 		}),
 		Entry("10. Pod with `kuma.io/sidecar-injection: disabled` annotation", testCase{
 			num: "10",
@@ -182,8 +255,16 @@ var _ = Describe("Injector", func() {
               metadata:
                 name: default
               spec: {}`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.config.yaml",
 		}),
-		Entry("11. Pod with `kuma.io/sidecar-injection: any-value-other-than-disabled` annotation", testCase{
+		Entry("11. Namespace - `kuma.io/sidecar-injection: disabled`, Pod - `kuma.io/sidecar-injection: enabled`", testCase{
 			num: "11",
 			mesh: `
               apiVersion: kuma.io/v1alpha1
@@ -191,6 +272,252 @@ var _ = Describe("Injector", func() {
               metadata:
                 name: default
               spec: {}`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: disabled`,
+			cfgFile: "inject.config.yaml",
+		}),
+		Entry("12. Mesh name from Namespace", testCase{
+			num: "12",
+			mesh: `
+              apiVersion: kuma.io/v1alpha1
+              kind: Mesh
+              metadata:
+                name: mesh-name-from-ns
+              spec: {}`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled
+                  kuma.io/mesh: mesh-name-from-ns`,
+			cfgFile: "inject.config.yaml",
+		}),
+		Entry("13. Override mesh name in Pod", testCase{
+			num: "13",
+			mesh: `
+              apiVersion: kuma.io/v1alpha1
+              kind: Mesh
+              metadata:
+                name: mesh-name-from-pod
+              spec: {}`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled
+                  kuma.io/mesh: mesh-name-from-ns`,
+			cfgFile: "inject.config.yaml",
+		}),
+		Entry("14. Adjust Pod's probes", testCase{
+			num: "14",
+			mesh: `
+              apiVersion: kuma.io/v1alpha1
+              kind: Mesh
+              metadata:
+                name: default
+              spec: {}`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.config.yaml",
+		}),
+		Entry("15. virtual probes: config - 9000, pod - 19000", testCase{
+			num: "15",
+			mesh: `
+              apiVersion: kuma.io/v1alpha1
+              kind: Mesh
+              metadata:
+                name: default
+              spec: {}`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.config.yaml",
+		}),
+		Entry("16. virtual probes: config - enabled, pod - disabled", testCase{
+			num: "16",
+			mesh: `
+              apiVersion: kuma.io/v1alpha1
+              kind: Mesh
+              metadata:
+                name: default
+              spec: {}`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.config.yaml",
+		}),
+		Entry("17. traffic.kuma.io/exclude-inbound-ports and traffic.kuma.io/exclude-outbound-ports", testCase{
+			num: "17",
+			mesh: `
+              apiVersion: kuma.io/v1alpha1
+              kind: Mesh
+              metadata:
+                name: default
+              spec: {}`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.config.yaml",
+		}),
+		Entry("18. traffic.kuma.io/exclude-inbound-ports and traffic.kuma.io/exclude-outbound-ports from config", testCase{
+			num: "18",
+			mesh: `
+              apiVersion: kuma.io/v1alpha1
+              kind: Mesh
+              metadata:
+                name: default
+              spec: {}`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.config-ports.yaml",
+		}),
+		Entry("19. traffic.kuma.io/exclude-inbound-ports and traffic.kuma.io/exclude-outbound-ports overrides config", testCase{
+			num: "19",
+			mesh: `
+              apiVersion: kuma.io/v1alpha1
+              kind: Mesh
+              metadata:
+                name: default
+              spec: {}`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.config-ports.yaml",
+		}),
+		Entry("20. skip injection for label exception", testCase{
+			num: "20",
+			mesh: `
+              apiVersion: kuma.io/v1alpha1
+              kind: Mesh
+              metadata:
+                name: default
+              spec: {}`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.config.yaml",
+		}),
+		Entry("21. virtual probes: config - disabled, pod - empty", testCase{
+			num: "21",
+			mesh: `
+              apiVersion: kuma.io/v1alpha1
+              kind: Mesh
+              metadata:
+                name: default
+              spec: {}`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.vp-disabled.config.yaml",
+		}),
+		Entry("22. virtual probes: config - disabled, pod - enabled", testCase{
+			num: "22",
+			mesh: `
+              apiVersion: kuma.io/v1alpha1
+              kind: Mesh
+              metadata:
+                name: default
+              spec: {}`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.vp-disabled.config.yaml",
+		}),
+		Entry("23. Adjust Pod's probes, named port", testCase{
+			num: "23",
+			mesh: `
+              apiVersion: kuma.io/v1alpha1
+              kind: Mesh
+              metadata:
+                name: default
+              spec: {}`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.config.yaml",
+		}),
+		Entry("24. sidecar env var config overrides", testCase{
+			num: "24",
+			mesh: `
+              apiVersion: kuma.io/v1alpha1
+              kind: Mesh
+              metadata:
+                name: default`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.env-vars.config.yaml",
+		}),
+		Entry("25. sidecar with builtinDNS", testCase{
+			num: "25",
+			mesh: `
+              apiVersion: kuma.io/v1alpha1
+              kind: Mesh
+              metadata:
+                name: default`,
+			namespace: `
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: default
+                annotations:
+                  kuma.io/sidecar-injection: enabled`,
+			cfgFile: "inject.builtindns.config.yaml",
 		}),
 	)
 })

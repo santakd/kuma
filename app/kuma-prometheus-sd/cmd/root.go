@@ -5,10 +5,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	kuma_cmd "github.com/Kong/kuma/pkg/cmd"
-	"github.com/Kong/kuma/pkg/cmd/version"
-	"github.com/Kong/kuma/pkg/core"
-	kuma_log "github.com/Kong/kuma/pkg/log"
+	kuma_cmd "github.com/kumahq/kuma/pkg/cmd"
+	"github.com/kumahq/kuma/pkg/cmd/version"
+	"github.com/kumahq/kuma/pkg/core"
+	kuma_log "github.com/kumahq/kuma/pkg/log"
 )
 
 var (
@@ -46,10 +46,14 @@ func newRootCmd() *cobra.Command {
 	return cmd
 }
 
+func DefaultRootCmd() *cobra.Command {
+	return newRootCmd()
+}
+
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
-	if err := newRootCmd().Execute(); err != nil {
+	if err := DefaultRootCmd().Execute(); err != nil {
 		os.Exit(1)
 	}
 }

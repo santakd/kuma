@@ -2,22 +2,37 @@ package names
 
 import (
 	"fmt"
-	"sort"
+	"net"
+	"strconv"
 	"strings"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
+	"github.com/pkg/errors"
 )
 
 func GetLocalClusterName(port uint32) string {
 	return fmt.Sprintf("localhost:%d", port)
 }
 
+func GetPortForLocalClusterName(cluster string) (uint32, error) {
+	parts := strings.Split(cluster, ":")
+	if len(parts) != 2 {
+		return 0, errors.Errorf("failed to  parse local cluster name: %s", cluster)
+	}
+	port, err := strconv.ParseUint(parts[1], 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	return uint32(port), nil
+}
+
 func GetInboundListenerName(address string, port uint32) string {
-	return fmt.Sprintf("inbound:%s:%d", address, port)
+	return fmt.Sprintf("inbound:%s",
+		net.JoinHostPort(address, strconv.FormatUint(uint64(port), 10)))
 }
 
 func GetOutboundListenerName(address string, port uint32) string {
-	return fmt.Sprintf("outbound:%s:%d", address, port)
+	return fmt.Sprintf("outbound:%s",
+		net.JoinHostPort(address, strconv.FormatUint(uint64(port), 10)))
 }
 
 func GetInboundRouteName(service string) string {
@@ -36,17 +51,14 @@ func GetPrometheusListenerName() string {
 	return "kuma:metrics:prometheus"
 }
 
-func GetDestinationClusterName(service string, selector map[string]string) string {
-	var pairs []string
-	for key, value := range selector {
-		if key == mesh_proto.ServiceTag {
-			continue
-		}
-		pairs = append(pairs, fmt.Sprintf("%s=%s", key, value))
-	}
-	if len(pairs) == 0 {
-		return service
-	}
-	sort.Strings(pairs)
-	return fmt.Sprintf("%s{%s}", service, strings.Join(pairs, ","))
+func GetAdminListenerName() string {
+	return "kuma:envoy:admin"
+}
+
+func GetTracingClusterName(backendName string) string {
+	return fmt.Sprintf("tracing:%s", backendName)
+}
+
+func GetDNSListenerName() string {
+	return "kuma:dns"
 }

@@ -3,10 +3,12 @@ package plugins
 import (
 	"github.com/pkg/errors"
 
-	core_ca "github.com/Kong/kuma/pkg/core/ca"
-	core_store "github.com/Kong/kuma/pkg/core/resources/store"
-	core_runtime "github.com/Kong/kuma/pkg/core/runtime"
-	secret_store "github.com/Kong/kuma/pkg/core/secrets/store"
+	"github.com/kumahq/kuma/pkg/events"
+
+	core_ca "github.com/kumahq/kuma/pkg/core/ca"
+	core_store "github.com/kumahq/kuma/pkg/core/resources/store"
+	core_runtime "github.com/kumahq/kuma/pkg/core/runtime"
+	secret_store "github.com/kumahq/kuma/pkg/core/secrets/store"
 )
 
 type Plugin interface{}
@@ -22,7 +24,8 @@ type MutablePluginContext = core_runtime.Builder
 // Unlike other plugins, can mutate plugin context directly.
 type BootstrapPlugin interface {
 	Plugin
-	Bootstrap(*MutablePluginContext, PluginConfig) error
+	BeforeBootstrap(*MutablePluginContext, PluginConfig) error
+	AfterBootstrap(*MutablePluginContext, PluginConfig) error
 }
 
 // ResourceStorePlugin is responsible for instantiating a particular ResourceStore.
@@ -31,20 +34,21 @@ type ResourceStorePlugin interface {
 	Plugin
 	NewResourceStore(PluginContext, PluginConfig) (core_store.ResourceStore, error)
 	Migrate(PluginContext, PluginConfig) (DbVersion, error)
+	EventListener(PluginContext, events.Emitter) error
 }
 
 var AlreadyMigrated = errors.New("database already migrated")
+
+// ConfigStorePlugin is responsible for instantiating a particular ConfigStore.
+type ConfigStorePlugin interface {
+	Plugin
+	NewConfigStore(PluginContext, PluginConfig) (core_store.ResourceStore, error)
+}
 
 // SecretStorePlugin is responsible for instantiating a particular SecretStore.
 type SecretStorePlugin interface {
 	Plugin
 	NewSecretStore(PluginContext, PluginConfig) (secret_store.SecretStore, error)
-}
-
-// DiscoveryPlugin is responsible for discovering Dataplanes for given environment.
-type DiscoveryPlugin interface {
-	Plugin
-	StartDiscovering(PluginContext, PluginConfig) error
 }
 
 // RuntimePlugin is responsible for registering environment-specific components,

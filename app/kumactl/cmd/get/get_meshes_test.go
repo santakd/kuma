@@ -14,23 +14,23 @@ import (
 	gomega_types "github.com/onsi/gomega/types"
 	"github.com/spf13/cobra"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	"github.com/Kong/kuma/app/kumactl/cmd"
-	kumactl_cmd "github.com/Kong/kuma/app/kumactl/pkg/cmd"
-	config_proto "github.com/Kong/kuma/pkg/config/app/kumactl/v1alpha1"
-	"github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	core_model "github.com/Kong/kuma/pkg/core/resources/model"
-	core_store "github.com/Kong/kuma/pkg/core/resources/store"
-	memory_resources "github.com/Kong/kuma/pkg/plugins/resources/memory"
-	test_model "github.com/Kong/kuma/pkg/test/resources/model"
-	util_proto "github.com/Kong/kuma/pkg/util/proto"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	"github.com/kumahq/kuma/app/kumactl/cmd"
+	kumactl_cmd "github.com/kumahq/kuma/app/kumactl/pkg/cmd"
+	config_proto "github.com/kumahq/kuma/pkg/config/app/kumactl/v1alpha1"
+	"github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
+	core_store "github.com/kumahq/kuma/pkg/core/resources/store"
+	memory_resources "github.com/kumahq/kuma/pkg/plugins/resources/memory"
+	test_model "github.com/kumahq/kuma/pkg/test/resources/model"
+	util_proto "github.com/kumahq/kuma/pkg/util/proto"
 )
 
 var _ = Describe("kumactl get meshes", func() {
 
 	sampleMeshes := []*mesh.MeshResource{
 		{
-			Spec: mesh_proto.Mesh{
+			Spec: &mesh_proto.Mesh{
 				Mtls: &mesh_proto.Mesh_Mtls{
 					EnabledBackend: "builtin-1",
 					Backends: []*mesh_proto.CertificateAuthorityBackend{
@@ -50,7 +50,7 @@ var _ = Describe("kumactl get meshes", func() {
 						{
 							Name: "prometheus-1",
 							Type: mesh_proto.MetricsPrometheusType,
-							Config: util_proto.MustToStruct(&mesh_proto.PrometheusMetricsBackendConfig{
+							Conf: util_proto.MustToStruct(&mesh_proto.PrometheusMetricsBackendConfig{
 								Port: 1234,
 								Path: "/non-standard-path",
 							}),
@@ -58,7 +58,7 @@ var _ = Describe("kumactl get meshes", func() {
 						{
 							Name: "prometheus-2",
 							Type: mesh_proto.MetricsPrometheusType,
-							Config: util_proto.MustToStruct(&mesh_proto.PrometheusMetricsBackendConfig{
+							Conf: util_proto.MustToStruct(&mesh_proto.PrometheusMetricsBackendConfig{
 								Port: 1235,
 								Path: "/non-standard-path",
 							}),
@@ -70,14 +70,14 @@ var _ = Describe("kumactl get meshes", func() {
 						{
 							Name: "logstash",
 							Type: mesh_proto.LoggingTcpType,
-							Config: util_proto.MustToStruct(&mesh_proto.TcpLoggingBackendConfig{
+							Conf: util_proto.MustToStruct(&mesh_proto.TcpLoggingBackendConfig{
 								Address: "127.0.0.1:5000",
 							}),
 						},
 						{
 							Name: "file",
 							Type: mesh_proto.LoggingFileType,
-							Config: util_proto.MustToStruct(&mesh_proto.FileLoggingBackendConfig{
+							Conf: util_proto.MustToStruct(&mesh_proto.FileLoggingBackendConfig{
 								Path: "/tmp/service.log",
 							}),
 						},
@@ -88,27 +88,29 @@ var _ = Describe("kumactl get meshes", func() {
 						{
 							Name: "zipkin-us",
 							Type: mesh_proto.TracingZipkinType,
-							Config: util_proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
+							Conf: util_proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
 								Url: "http://zipkin.us:8080/v1/spans",
 							}),
 						},
 						{
 							Name: "zipkin-eu",
 							Type: mesh_proto.TracingZipkinType,
-							Config: util_proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
+							Conf: util_proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
 								Url: "http://zipkin.eu:8080/v1/spans",
 							}),
 						},
 					},
 				},
+				Routing: &mesh_proto.Routing{
+					LocalityAwareLoadBalancing: true,
+				},
 			},
 			Meta: &test_model.ResourceMeta{
-				Mesh: "mesh1",
 				Name: "mesh1",
 			},
 		},
 		{
-			Spec: mesh_proto.Mesh{
+			Spec: &mesh_proto.Mesh{
 				Metrics: &mesh_proto.Metrics{
 					Backends: []*mesh_proto.MetricsBackend{},
 				},
@@ -120,7 +122,6 @@ var _ = Describe("kumactl get meshes", func() {
 				},
 			},
 			Meta: &test_model.ResourceMeta{
-				Mesh: "mesh2",
 				Name: "mesh2",
 			},
 		},
@@ -144,7 +145,7 @@ var _ = Describe("kumactl get meshes", func() {
 				},
 			}
 
-			store = memory_resources.NewStore()
+			store = core_store.NewPaginationStore(memory_resources.NewStore())
 
 			for _, ds := range sampleMeshes {
 				key := core_model.ResourceKey{

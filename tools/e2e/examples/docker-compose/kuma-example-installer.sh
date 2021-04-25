@@ -6,16 +6,16 @@ set -e
 # Utility functions
 #
 
-function resolve_ip {
-  nslookup "${1}" 2>/dev/null | tail -1 | awk '{print $3}'
+resolve_ip() {
+  getent hosts ${DATAPLANE_HOSTNAME} 2>/dev/null | awk -e '{ print $1 }'
 }
 
-function fail {
+fail() {
   printf 'Error: %s\n' "${1}" >&2  ## Send message to stderr. Exclude >&2 if you don't want it that way.
   exit "${2-1}"                    ## Return a code specified by $2 or 1 by default.
 }
 
-function create_dataplane {
+create_dataplane() {
   DATAPLANE_HOSTNAME="$1"
   DATAPLANE_PUBLIC_PORT=$2
   DATAPLANE_LOCAL_PORT=$3
@@ -45,18 +45,18 @@ function create_dataplane {
   # Create token for "${DATAPLANE_NAME}"
   #
 
-  kumactl generate dataplane-token --dataplane=${DATAPLANE_NAME} > /${DATAPLANE_NAME}/token
+  kumactl generate dataplane-token --name=${DATAPLANE_NAME} > /${DATAPLANE_NAME}/token
 }
 
 #
 # Arguments
 #
 
-KUMA_CONTROL_PLANE_URL=http://kuma-control-plane:5681
+KUMA_CONTROL_PLANE_URL=https://kuma-control-plane:5682
 
 KUMA_EXAMPLE_APP_HOSTNAME=kuma-example-app
 KUMA_EXAMPLE_APP_PUBLIC_PORT=8000
-KUMA_EXAMPLE_APP_LOCAL_PORT=8000
+KUMA_EXAMPLE_APP_LOCAL_PORT=80
 
 KUMA_EXAMPLE_CLIENT_HOSTNAME=kuma-example-client
 KUMA_EXAMPLE_CLIENT_PUBLIC_PORT=3000
@@ -78,7 +78,7 @@ KUMA_EXAMPLE_BACKEND_V2_LOCAL_PORT=7070
 # Configure `kumactl`
 #
 
-kumactl config control-planes add --name universal --address ${KUMA_CONTROL_PLANE_URL} --admin-client-cert /certs/client/cert.pem --admin-client-key /certs/client/cert.key --overwrite
+kumactl config control-planes add --name universal --address ${KUMA_CONTROL_PLANE_URL} --ca-cert-file /certs/server/cert.pem --client-cert-file /certs/client/cert.pem --client-key-file /certs/client/cert.key --overwrite
 
 #
 # Create Dataplane for `kuma-example-app` service
@@ -94,8 +94,8 @@ networking:
   - port: {{ PUBLIC_PORT }}
     servicePort: {{ LOCAL_PORT }}
     tags:
-      service: kuma-example-app
-      protocol: http
+      kuma.io/service: kuma-example-app
+      kuma.io/protocol: http
 "
 
 #
@@ -112,7 +112,7 @@ networking:
   - port: {{ PUBLIC_PORT }}
     servicePort: {{ LOCAL_PORT }}
     tags:
-      service: kuma-example-client
+      kuma.io/service: kuma-example-client
   outbound:
   - port: 4000
     service: kuma-example-app"
@@ -131,7 +131,7 @@ networking:
   - port: {{ PUBLIC_PORT }}
     servicePort: {{ LOCAL_PORT }}
     tags:
-      service: kuma-example-web
+      kuma.io/service: kuma-example-web
       version: v8
       env: prod
   outbound:
@@ -152,7 +152,7 @@ networking:
   - port: {{ PUBLIC_PORT }}
     servicePort: {{ LOCAL_PORT }}
     tags:
-      service: kuma-example-backend
+      kuma.io/service: kuma-example-backend
       version: v1
       env: prod"
 
@@ -170,6 +170,6 @@ networking:
   - port: {{ PUBLIC_PORT }}
     servicePort: {{ LOCAL_PORT }}
     tags:
-      service: kuma-example-backend
+      kuma.io/service: kuma-example-backend
       version: v2
       env: intg"

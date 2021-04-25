@@ -6,8 +6,8 @@ import (
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	. "github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	util_proto "github.com/Kong/kuma/pkg/util/proto"
+	. "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	util_proto "github.com/kumahq/kuma/pkg/util/proto"
 )
 
 var _ = Describe("FaultInjection", func() {
@@ -15,10 +15,10 @@ var _ = Describe("FaultInjection", func() {
 		DescribeTable("should pass validation",
 			func(faultInjectionYAML string) {
 				// setup
-				faultInjection := FaultInjectionResource{}
+				faultInjection := NewFaultInjectionResource()
 
 				// when
-				err := util_proto.FromYAML([]byte(faultInjectionYAML), &faultInjection.Spec)
+				err := util_proto.FromYAML([]byte(faultInjectionYAML), faultInjection.Spec)
 				// then
 				Expect(err).ToNot(HaveOccurred())
 
@@ -31,13 +31,13 @@ var _ = Describe("FaultInjection", func() {
                 sources:
                 - match:
                     service: frontend
-                    protocol: http
+                    kuma.io/protocol: http
                 destinations:
                 - match:
                     service: backend
-                    protocol: http
+                    kuma.io/protocol: http
                     region: eu
-                    valid: abcd.123-456.under_score_.:80
+                    kuma.io/valid: abcd.123-456.under_score_.:80
                 conf:
                   delay:
                     percentage: 50
@@ -48,15 +48,27 @@ var _ = Describe("FaultInjection", func() {
                   responseBandwidth:
                     percentage: 40
                     limit: 50kbps`),
+			Entry("http2", `
+                sources:
+                - match:
+                    service: frontend
+                destinations:
+                - match:
+                    service: backend
+                    kuma.io/protocol: http2
+                conf:
+                  delay:
+                    percentage: 50
+                    value: 10ms`),
 			Entry("match any", `
                 sources:
                 - match:
                     service: frontend
-                    protocol: http
+                    kuma.io/protocol: http
                 destinations:
                 - match:
                     service: backend
-                    protocol: http
+                    kuma.io/protocol: grpc
                     region: "*"
                 conf:
                   delay:
@@ -77,10 +89,10 @@ var _ = Describe("FaultInjection", func() {
 		DescribeTable("should validate all fields and return as much individual errors as possible",
 			func(given testCase) {
 				// setup
-				faultInjection := FaultInjectionResource{}
+				faultInjection := NewFaultInjectionResource()
 
 				// when
-				err := util_proto.FromYAML([]byte(given.faultInjection), &faultInjection.Spec)
+				err := util_proto.FromYAML([]byte(given.faultInjection), faultInjection.Spec)
 				// then
 				Expect(err).ToNot(HaveOccurred())
 
@@ -109,11 +121,11 @@ var _ = Describe("FaultInjection", func() {
                 sources:
                 - match:
                    service: frontend
-                   protocol: http
+                   kuma.io/protocol: http
                 destinations:
                 - match:
                    service: backend
-                   protocol: http
+                   kuma.io/protocol: http
                    region: eu
                 conf:
                   delay: {}
@@ -128,11 +140,11 @@ var _ = Describe("FaultInjection", func() {
                 sources:
                 - match:
                    service: frontend
-                   protocol: http
+                   kuma.io/protocol: http
                 destinations:
                 - match:
                    service: backend
-                   protocol: http
+                   kuma.io/protocol: http
                    region: eu
                 conf:
                   delay:
@@ -154,11 +166,11 @@ var _ = Describe("FaultInjection", func() {
                 sources:
                 - match:
                    service: frontend
-                   protocol: http
+                   kuma.io/protocol: http
                 destinations:
                 - match:
                    service: backend
-                   protocol: http
+                   kuma.io/protocol: http
                    region: eu
                 conf:
                   delay:
@@ -180,11 +192,11 @@ var _ = Describe("FaultInjection", func() {
                 sources:
                 - match:
                    service: frontend
-                   protocol: http
+                   kuma.io/protocol: http
                 destinations:
                 - match:
                    service: backend
-                   protocol: http
+                   kuma.io/protocol: http
                    region: eu
                 conf:
                   abort:
@@ -199,11 +211,11 @@ var _ = Describe("FaultInjection", func() {
                 sources:
                 - match:
                    service: frontend
-                   protocol: http
+                   kuma.io/protocol: http
                 destinations:
                 - match:
                    service: backend
-                   protocol: http
+                   kuma.io/protocol: http
                    region: eu
                 conf:
                   responseBandwidth:
@@ -215,12 +227,11 @@ var _ = Describe("FaultInjection", func() {
                  message: has to be in [0.0 - 100.0] range
                - field: conf.responseBandwidth.limit
                  message: has to be in kbps/mbps/gbps units`}),
-			Entry("protocol: wrong format", testCase{
+			Entry("kuma.io/protocol: not specified", testCase{
 				faultInjection: `
                 sources:
                 - match:
                     service: frontend
-                    protocol: tcp
                 destinations:
                 - match:
                     service: backend
@@ -231,21 +242,37 @@ var _ = Describe("FaultInjection", func() {
                     percentage: 100`,
 				expected: `
                violations:
-               - field: sources[0].match["protocol"]
-                 message: must be one of the [http]
                - field: destinations[0].match
                  message: protocol must be specified`}),
+			Entry("kuma.io/protocol: wrong protocol", testCase{
+				faultInjection: `
+                sources:
+                - match:
+                    service: frontend
+                destinations:
+                - match:
+                    service: backend
+                    region: eu
+                    kuma.io/protocol: tcp
+                conf:
+                  responseBandwidth:
+                    limit: 50mbps
+                    percentage: 100`,
+				expected: `
+               violations:
+               - field: destinations[0].match["kuma.io/protocol"]
+                 message: must be one of the [http, http2, grpc]`}),
 			Entry("tag value: invalid character set", testCase{
 				faultInjection: `
                 sources:
                 - match:
                     service: frontend
-                    protocol: http
+                    kuma.io/protocol: http
                     invalidTag: v@/u^e
                 destinations:
                 - match:
                     service: backend
-                    protocol: http
+                    kuma.io/protocol: http
                     invalidTag: v@/u^e#!
                 conf:
                   responseBandwidth:
@@ -254,20 +281,20 @@ var _ = Describe("FaultInjection", func() {
 				expected: `
                violations:
                - field: sources[0].match["invalidTag"]
-                 message: tag value must consist of alphanumeric characters, dots, dashes and underscores or be "*"
+                 message: tag value must consist of alphanumeric characters, dots, dashes, slashes and underscores or be "*"
                - field: destinations[0].match["invalidTag"]
-                 message: tag value must consist of alphanumeric characters, dots, dashes and underscores or be "*"`}),
+                 message: tag value must consist of alphanumeric characters, dots, dashes, slashes and underscores or be "*"`}),
 			Entry("tag name: invalid character set", testCase{
 				faultInjection: `
                 sources:
                 - match:
                     service: frontend
-                    protocol: http
+                    kuma.io/protocol: http
                     inv@lidT@g#: value
                 destinations:
                 - match:
                     service: backend
-                    protocol: http
+                    kuma.io/protocol: http
                     inv@lidT@g#: value
                 conf:
                   responseBandwidth:
@@ -276,9 +303,9 @@ var _ = Describe("FaultInjection", func() {
 				expected: `
                violations:
                - field: sources[0].match["inv@lidT@g#"]
-                 message: tag name must consist of alphanumeric characters, dots, dashes and underscores
+                 message: tag name must consist of alphanumeric characters, dots, dashes, slashes and underscores
                - field: destinations[0].match["inv@lidT@g#"]
-                 message: tag name must consist of alphanumeric characters, dots, dashes and underscores`}),
+                 message: tag name must consist of alphanumeric characters, dots, dashes, slashes and underscores`}),
 		)
 	})
 })

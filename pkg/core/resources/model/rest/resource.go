@@ -8,7 +8,7 @@ import (
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/pkg/errors"
 
-	"github.com/Kong/kuma/pkg/core/resources/model"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
 )
 
 type ResourceMeta struct {
@@ -19,12 +19,39 @@ type ResourceMeta struct {
 	ModificationTime time.Time `json:"modificationTime"`
 }
 
+func (r *ResourceMeta) GetName() string {
+	return r.Name
+}
+
+func (r *ResourceMeta) GetNameExtensions() model.ResourceNameExtensions {
+	return model.ResourceNameExtensionsUnsupported
+}
+
+func (r *ResourceMeta) GetVersion() string {
+	return ""
+}
+
+func (r *ResourceMeta) GetMesh() string {
+	return r.Mesh
+}
+
+func (r *ResourceMeta) GetCreationTime() time.Time {
+	return r.CreationTime
+}
+
+func (r *ResourceMeta) GetModificationTime() time.Time {
+	return r.ModificationTime
+}
+
+var _ model.ResourceMeta = &ResourceMeta{}
+
 type Resource struct {
 	Meta ResourceMeta
 	Spec model.ResourceSpec
 }
 
 type ResourceList struct {
+	Total uint32      `json:"total"`
 	Items []*Resource `json:"items"`
 	Next  *string     `json:"next"`
 }
@@ -80,6 +107,7 @@ func (rec *ResourceListReceiver) UnmarshalJSON(data []byte) error {
 		return errors.Errorf("NewResource must not be nil")
 	}
 	type List struct {
+		Total uint32             `json:"total"`
 		Items []*json.RawMessage `json:"items"`
 		Next  *string            `json:"next"`
 	}
@@ -87,6 +115,7 @@ func (rec *ResourceListReceiver) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &list); err != nil {
 		return err
 	}
+	rec.ResourceList.Total = list.Total
 	rec.ResourceList.Items = make([]*Resource, len(list.Items))
 	for i, li := range list.Items {
 		b, err := json.Marshal(li)
@@ -106,3 +135,16 @@ func (rec *ResourceListReceiver) UnmarshalJSON(data []byte) error {
 	rec.ResourceList.Next = list.Next
 	return nil
 }
+
+type ByMeta []*Resource
+
+func (a ByMeta) Len() int { return len(a) }
+
+func (a ByMeta) Less(i, j int) bool {
+	if a[i].Meta.Mesh == a[j].Meta.Mesh {
+		return a[i].Meta.Name < a[j].Meta.Name
+	}
+	return a[i].Meta.Mesh < a[j].Meta.Mesh
+}
+
+func (a ByMeta) Swap(i, j int) { a[i], a[j] = a[j], a[i] }

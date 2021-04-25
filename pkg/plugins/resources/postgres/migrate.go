@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -9,10 +10,11 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/httpfs"
 	"github.com/pkg/errors"
 
-	"github.com/Kong/kuma/app/kumactl/pkg/install/data"
-	postgres_cfg "github.com/Kong/kuma/pkg/config/plugins/resources/postgres"
-	core_plugins "github.com/Kong/kuma/pkg/core/plugins"
-	"github.com/Kong/kuma/pkg/plugins/resources/postgres/migrations"
+	"github.com/kumahq/kuma/app/kumactl/pkg/install/data"
+	postgres_cfg "github.com/kumahq/kuma/pkg/config/plugins/resources/postgres"
+	core_plugins "github.com/kumahq/kuma/pkg/core/plugins"
+	common_postgres "github.com/kumahq/kuma/pkg/plugins/common/postgres"
+	"github.com/kumahq/kuma/pkg/plugins/resources/postgres/migrations"
 )
 
 func migrateDb(cfg postgres_cfg.PostgresStoreConfig) (core_plugins.DbVersion, error) {
@@ -28,7 +30,7 @@ func migrateDb(cfg postgres_cfg.PostgresStoreConfig) (core_plugins.DbVersion, er
 			}
 			return ver, core_plugins.AlreadyMigrated
 		}
-		if err.Error() == "file does not exist" {
+		if strings.Contains(err.Error(), "file does not exist") {
 			dbVer, _, err := m.Version()
 			if err != nil {
 				return 0, err
@@ -49,7 +51,7 @@ func migrateDb(cfg postgres_cfg.PostgresStoreConfig) (core_plugins.DbVersion, er
 }
 
 func newMigrate(cfg postgres_cfg.PostgresStoreConfig) (*migrate.Migrate, error) {
-	db, err := connectToDb(cfg)
+	db, err := common_postgres.ConnectToDb(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +59,7 @@ func newMigrate(cfg postgres_cfg.PostgresStoreConfig) (*migrate.Migrate, error) 
 	if err != nil {
 		return nil, err
 	}
-	sourceDriver, err := httpfs.New(migrations.Migrations, "")
+	sourceDriver, err := httpfs.New(http.FS(migrations.MigrationFS()), ".")
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +92,7 @@ func isDbMigrated(cfg postgres_cfg.PostgresStoreConfig) (bool, error) {
 }
 
 func newestMigration() (core_plugins.DbVersion, error) {
-	files, err := data.ReadFiles(migrations.Migrations)
+	files, err := data.ReadFiles(migrations.MigrationFS())
 	if err != nil {
 		return 0, err
 	}

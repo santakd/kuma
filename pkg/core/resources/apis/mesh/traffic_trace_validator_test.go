@@ -6,8 +6,8 @@ import (
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	. "github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	util_proto "github.com/Kong/kuma/pkg/util/proto"
+	. "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	util_proto "github.com/kumahq/kuma/pkg/util/proto"
 )
 
 var _ = Describe("TrafficTrace", func() {
@@ -15,10 +15,10 @@ var _ = Describe("TrafficTrace", func() {
 		DescribeTable("should pass validation",
 			func(trafficTraceYAML string) {
 				// setup
-				trafficTrace := TrafficTraceResource{}
+				trafficTrace := NewTrafficTraceResource()
 
 				// when
-				err := util_proto.FromYAML([]byte(trafficTraceYAML), &trafficTrace.Spec)
+				err := util_proto.FromYAML([]byte(trafficTraceYAML), trafficTrace.Spec)
 				// then
 				Expect(err).ToNot(HaveOccurred())
 
@@ -56,10 +56,10 @@ var _ = Describe("TrafficTrace", func() {
 		DescribeTable("should validate all fields and return as much individual errors as possible",
 			func(given testCase) {
 				// setup
-				trafficTrace := TrafficTraceResource{}
+				trafficTrace := NewTrafficTraceResource()
 
 				// when
-				err := util_proto.FromYAML([]byte(given.trafficTrace), &trafficTrace.Spec)
+				err := util_proto.FromYAML([]byte(given.trafficTrace), trafficTrace.Spec)
 				// then
 				Expect(err).ToNot(HaveOccurred())
 
@@ -96,14 +96,14 @@ var _ = Describe("TrafficTrace", func() {
 				trafficTrace: `
                 selectors:
                 - match:
-                    service:
+                    kuma.io/service:
                     region:
 `,
 				expected: `
                 violations:
-                - field: selectors[0].match["region"]
+                - field: selectors[0].match["kuma.io/service"]
                   message: tag value must be non-empty
-                - field: selectors[0].match["service"]
+                - field: selectors[0].match["region"]
                   message: tag value must be non-empty
 `,
 			}),
@@ -111,15 +111,15 @@ var _ = Describe("TrafficTrace", func() {
 				trafficTrace: `
                 selectors:
                 - match:
-                    service:
+                    kuma.io/service:
                     region:
                 - match: {}
 `,
 				expected: `
                 violations:
-                - field: selectors[0].match["region"]
+                - field: selectors[0].match["kuma.io/service"]
                   message: tag value must be non-empty
-                - field: selectors[0].match["service"]
+                - field: selectors[0].match["region"]
                   message: tag value must be non-empty
                 - field: selectors[1].match
                   message: must have at least one tag

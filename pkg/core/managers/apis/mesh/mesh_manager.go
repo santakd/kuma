@@ -4,21 +4,22 @@ import (
 	"context"
 	"time"
 
+	"github.com/kumahq/kuma/pkg/core/resources/apis/system"
+
 	"github.com/pkg/errors"
 
-	core_ca "github.com/Kong/kuma/pkg/core/ca"
-	core_mesh "github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	core_manager "github.com/Kong/kuma/pkg/core/resources/manager"
-	core_model "github.com/Kong/kuma/pkg/core/resources/model"
-	core_registry "github.com/Kong/kuma/pkg/core/resources/registry"
-	core_store "github.com/Kong/kuma/pkg/core/resources/store"
-	secrets_manager "github.com/Kong/kuma/pkg/core/secrets/manager"
+	core_ca "github.com/kumahq/kuma/pkg/core/ca"
+	core_mesh "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	core_manager "github.com/kumahq/kuma/pkg/core/resources/manager"
+	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
+	core_registry "github.com/kumahq/kuma/pkg/core/resources/registry"
+	core_store "github.com/kumahq/kuma/pkg/core/resources/store"
+	defaults_mesh "github.com/kumahq/kuma/pkg/defaults/mesh"
 )
 
 func NewMeshManager(
 	store core_store.ResourceStore,
 	otherManagers core_manager.ResourceManager,
-	secretManager secrets_manager.SecretManager,
 	caManagers core_ca.Managers,
 	registry core_registry.TypeRegistry,
 	validator MeshValidator,
@@ -26,7 +27,6 @@ func NewMeshManager(
 	return &meshManager{
 		store:         store,
 		otherManagers: otherManagers,
-		secretManager: secretManager,
 		caManagers:    caManagers,
 		registry:      registry,
 		meshValidator: validator,
@@ -36,7 +36,6 @@ func NewMeshManager(
 type meshManager struct {
 	store         core_store.ResourceStore
 	otherManagers core_manager.ResourceManager
-	secretManager secrets_manager.SecretManager
 	caManagers    core_ca.Managers
 	registry      core_registry.TypeRegistry
 	meshValidator MeshValidator
@@ -81,12 +80,20 @@ func (m *meshManager) Create(ctx context.Context, resource core_model.Resource, 
 	if err := m.store.Create(ctx, mesh, append(fs, core_store.CreatedAt(time.Now()))...); err != nil {
 		return err
 	}
+	if err := defaults_mesh.EnsureDefaultMeshResources(m.otherManagers, opts.Name); err != nil {
+		return err
+	}
 	return nil
 }
 
 func (m *meshManager) Delete(ctx context.Context, resource core_model.Resource, fs ...core_store.DeleteOptionsFunc) error {
 	mesh, err := m.mesh(resource)
 	if err != nil {
+		return err
+	}
+	opts := core_store.NewDeleteOptions(fs...)
+
+	if err := m.meshValidator.ValidateDelete(ctx, opts.Name); err != nil {
 		return err
 	}
 	// delete Mesh first to avoid a state where a Mesh could exist without secrets.
@@ -99,20 +106,9 @@ func (m *meshManager) Delete(ctx context.Context, resource core_model.Resource, 
 			return err
 		}
 	}
-	opts := core_store.NewDeleteOptions(fs...)
 	// delete all secrets
-	if err := m.secretManager.DeleteAll(ctx, core_store.DeleteAllByMesh(opts.Mesh)); err != nil {
+	if err := m.otherManagers.DeleteAll(ctx, &system.SecretResourceList{}, core_store.DeleteAllByMesh(opts.Name)); err != nil {
 		return errors.Wrap(err, "could not delete associated secrets")
-	}
-	// delete other resources associated by mesh
-	for _, typ := range m.registry.ListTypes() {
-		list, err := m.registry.NewList(typ)
-		if err != nil {
-			return err
-		}
-		if err := m.otherManagers.DeleteAll(ctx, list, core_store.DeleteAllByMesh(opts.Name)); err != nil {
-			return errors.Wrap(err, "could not delete associated resources")
-		}
 	}
 	return notFoundErr
 }
@@ -136,7 +132,7 @@ func (m *meshManager) Update(ctx context.Context, resource core_model.Resource, 
 		return err
 	}
 
-	currentMesh := &core_mesh.MeshResource{}
+	currentMesh := core_mesh.NewMeshResource()
 	if err := m.Get(ctx, currentMesh, core_store.GetBy(core_model.MetaToResourceKey(mesh.GetMeta())), core_store.GetByVersion(mesh.GetMeta().GetVersion())); err != nil {
 		return err
 	}

@@ -14,22 +14,22 @@ import (
 	gomega_types "github.com/onsi/gomega/types"
 	"github.com/spf13/cobra"
 
-	"github.com/Kong/kuma/api/mesh/v1alpha1"
-	"github.com/Kong/kuma/app/kumactl/cmd"
-	kumactl_cmd "github.com/Kong/kuma/app/kumactl/pkg/cmd"
-	config_proto "github.com/Kong/kuma/pkg/config/app/kumactl/v1alpha1"
-	"github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	core_model "github.com/Kong/kuma/pkg/core/resources/model"
-	core_store "github.com/Kong/kuma/pkg/core/resources/store"
-	memory_resources "github.com/Kong/kuma/pkg/plugins/resources/memory"
-	test_model "github.com/Kong/kuma/pkg/test/resources/model"
+	"github.com/kumahq/kuma/api/mesh/v1alpha1"
+	"github.com/kumahq/kuma/app/kumactl/cmd"
+	kumactl_cmd "github.com/kumahq/kuma/app/kumactl/pkg/cmd"
+	config_proto "github.com/kumahq/kuma/pkg/config/app/kumactl/v1alpha1"
+	"github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
+	core_store "github.com/kumahq/kuma/pkg/core/resources/store"
+	memory_resources "github.com/kumahq/kuma/pkg/plugins/resources/memory"
+	test_model "github.com/kumahq/kuma/pkg/test/resources/model"
 )
 
 var _ = Describe("kumactl get traffic-traces", func() {
 
 	trafficTraceResources := []*mesh.TrafficTraceResource{
 		{
-			Spec: v1alpha1.TrafficTrace{
+			Spec: &v1alpha1.TrafficTrace{
 				Selectors: []*v1alpha1.Selector{
 					{
 						Match: map[string]string{
@@ -48,7 +48,7 @@ var _ = Describe("kumactl get traffic-traces", func() {
 			},
 		},
 		{
-			Spec: v1alpha1.TrafficTrace{
+			Spec: &v1alpha1.TrafficTrace{
 				Selectors: []*v1alpha1.Selector{
 					{
 						Match: map[string]string{
@@ -86,7 +86,7 @@ var _ = Describe("kumactl get traffic-traces", func() {
 				},
 			}
 
-			store = memory_resources.NewStore()
+			store = core_store.NewPaginationStore(memory_resources.NewStore())
 
 			for _, ds := range trafficTraceResources {
 				err := store.Create(context.Background(), ds, core_store.CreateBy(core_model.MetaToResourceKey(ds.GetMeta())))

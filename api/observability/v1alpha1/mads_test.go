@@ -5,9 +5,9 @@ import (
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	. "github.com/Kong/kuma/api/observability/v1alpha1"
+	. "github.com/kumahq/kuma/api/observability/v1alpha1"
 
-	util_proto "github.com/Kong/kuma/api/internal/util/proto"
+	util_proto "github.com/kumahq/kuma/api/internal/util/proto"
 )
 
 var _ = Describe("Monitoring Assignment Discovery Service", func() {
@@ -28,9 +28,6 @@ var _ = Describe("Monitoring Assignment Discovery Service", func() {
 				err := util_proto.FromYAML([]byte(given.input), ma)
 				// then
 				Expect(err).ToNot(HaveOccurred())
-
-				By("validating")
-				Expect(ma.Validate()).To(Succeed())
 
 				By("serializing back to YAML")
 				// when
@@ -66,12 +63,5 @@ var _ = Describe("Monitoring Assignment Discovery Service", func() {
 `,
 			}),
 		)
-
-		It("should require a non-empty name", func() {
-			// given
-			ma := &MonitoringAssignment{}
-			// expect
-			Expect(ma.Validate()).To(HaveOccurred())
-		})
 	})
 })

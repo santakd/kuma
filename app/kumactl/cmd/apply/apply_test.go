@@ -11,26 +11,24 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Kong/kuma/pkg/catalog"
-	catalog_client "github.com/Kong/kuma/pkg/catalog/client"
-	"github.com/Kong/kuma/pkg/core/resources/apis/system"
-	test_catalog "github.com/Kong/kuma/pkg/test/catalog"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
 
-	"github.com/Kong/kuma/api/mesh/v1alpha1"
-	"github.com/Kong/kuma/app/kumactl/cmd"
-	kumactl_cmd "github.com/Kong/kuma/app/kumactl/pkg/cmd"
-	config_proto "github.com/Kong/kuma/pkg/config/app/kumactl/v1alpha1"
-	"github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	core_store "github.com/Kong/kuma/pkg/core/resources/store"
-	"github.com/Kong/kuma/pkg/core/rest/errors/types"
-	memory_resources "github.com/Kong/kuma/pkg/plugins/resources/memory"
-	"github.com/Kong/kuma/pkg/test/resources/model"
-	test_store "github.com/Kong/kuma/pkg/test/store"
+	"github.com/kumahq/kuma/pkg/core/resources/apis/system"
+	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
+
+	"github.com/kumahq/kuma/api/mesh/v1alpha1"
+	"github.com/kumahq/kuma/app/kumactl/cmd"
+	kumactl_cmd "github.com/kumahq/kuma/app/kumactl/pkg/cmd"
+	config_proto "github.com/kumahq/kuma/pkg/config/app/kumactl/v1alpha1"
+	"github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	core_store "github.com/kumahq/kuma/pkg/core/resources/store"
+	"github.com/kumahq/kuma/pkg/core/rest/errors/types"
+	memory_resources "github.com/kumahq/kuma/pkg/plugins/resources/memory"
+	"github.com/kumahq/kuma/pkg/test/resources/model"
+	test_store "github.com/kumahq/kuma/pkg/test/store"
 )
 
 var _ = Describe("kumactl apply", func() {
@@ -44,29 +42,15 @@ var _ = Describe("kumactl apply", func() {
 				NewResourceStore: func(*config_proto.ControlPlaneCoordinates_ApiServer) (core_store.ResourceStore, error) {
 					return store, nil
 				},
-				NewAdminResourceStore: func(string, *config_proto.Context_AdminApiCredentials) (core_store.ResourceStore, error) {
-					return store, nil
-				},
-				NewCatalogClient: func(s string) (catalog_client.CatalogClient, error) {
-					return &test_catalog.StaticCatalogClient{
-						Resp: catalog.Catalog{
-							Apis: catalog.Apis{
-								DataplaneToken: catalog.DataplaneTokenApi{
-									LocalUrl: "http://localhost:1234",
-								},
-							},
-						},
-					}, nil
-				},
 			},
 		}
-		store = memory_resources.NewStore()
+		store = core_store.NewPaginationStore(memory_resources.NewStore())
 		rootCmd = cmd.NewRootCmd(rootCtx)
 	})
 
 	ValidatePersistedResource := func() {
-		resource := mesh.DataplaneResource{}
-		err := store.Get(context.Background(), &resource, core_store.GetByKey("sample", "default"))
+		resource := mesh.NewDataplaneResource()
+		err := store.Get(context.Background(), resource, core_store.GetByKey("sample", "default"))
 		Expect(err).ToNot(HaveOccurred())
 
 		// then
@@ -74,7 +58,7 @@ var _ = Describe("kumactl apply", func() {
 		Expect(resource.Meta.GetMesh()).To(Equal("default"))
 		// and
 		Expect(resource.Spec.Networking.Address).To(Equal("2.2.2.2"))
-		//and
+		// and
 		Expect(resource.Spec.Networking.Inbound).To(HaveLen(1))
 		Expect(resource.Spec.Networking.Inbound[0].Address).To(Equal("1.1.1.1"))
 		Expect(resource.Spec.Networking.Inbound[0].Port).To(Equal(uint32(80)))
@@ -88,25 +72,18 @@ var _ = Describe("kumactl apply", func() {
 		Expect(resource.Spec.Networking.Outbound[0].Service).To(Equal("postgres"))
 	}
 
-	It("should read configuration from stdin (no -f arg)", func() {
+	It("should require -f arg", func() {
 		// setup
-		mockStdin, err := os.Open(filepath.Join("testdata", "apply-dataplane.yaml"))
-		Expect(err).ToNot(HaveOccurred())
-
-		// given
 		rootCmd.SetArgs([]string{
 			"--config-file", filepath.Join("..", "testdata", "sample-kumactl.config.yaml"),
 			"apply",
 		})
-		rootCmd.SetIn(mockStdin)
 
 		// when
-		err = rootCmd.Execute()
-		// then
-		Expect(err).ToNot(HaveOccurred())
+		err := rootCmd.Execute()
 
-		// and
-		ValidatePersistedResource()
+		// then
+		Expect(err).To(MatchError(`required flag(s) "file" not set`))
 	})
 
 	It("should read configuration from stdin (-f - arg)", func() {
@@ -149,7 +126,7 @@ var _ = Describe("kumactl apply", func() {
 	It("should apply an updated Dataplane resource", func() {
 		// setup
 		newResource := mesh.DataplaneResource{
-			Spec: v1alpha1.Dataplane{
+			Spec: &v1alpha1.Dataplane{
 				Networking: &v1alpha1.Dataplane_Networking{
 					Address: "8.8.8.8",
 					Inbound: []*v1alpha1.Dataplane_Networking_Inbound{
@@ -197,14 +174,14 @@ var _ = Describe("kumactl apply", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// when
-		resource := mesh.MeshResource{}
+		resource := mesh.NewMeshResource()
 		// with production code, the mesh is not required for remote store. API Server then infer mesh from the name
-		err = store.Get(context.Background(), &resource, core_store.GetByKey("sample", ""))
+		err = store.Get(context.Background(), resource, core_store.GetByKey("sample", ""))
 		Expect(err).ToNot(HaveOccurred())
 
 		// then
 		Expect(resource.Meta.GetName()).To(Equal("sample"))
-		Expect(resource.Meta.GetMesh()).To(Equal("sample"))
+		Expect(resource.Meta.GetMesh()).To(Equal(core_model.NoMesh))
 	})
 
 	It("should apply a Secret resource", func() {
@@ -220,8 +197,8 @@ var _ = Describe("kumactl apply", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// when
-		secret := system.SecretResource{}
-		err = store.Get(context.Background(), &secret, core_store.GetByKey("sample", "default"))
+		secret := system.NewSecretResource()
+		err = store.Get(context.Background(), secret, core_store.GetByKey("sample", "default"))
 		Expect(err).ToNot(HaveOccurred())
 
 		// then
@@ -284,14 +261,64 @@ var _ = Describe("kumactl apply", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// when
-		resource := mesh.MeshResource{}
+		resource := mesh.NewMeshResource()
 		// with production code, the mesh is not required for remote store. API Server then infer mesh from the name
-		err = store.Get(context.Background(), &resource, core_store.GetByKey("meshinit", ""))
+		err = store.Get(context.Background(), resource, core_store.GetByKey("meshinit", ""))
 		Expect(err).ToNot(HaveOccurred())
 
 		// then
 		Expect(resource.Meta.GetName()).To(Equal("meshinit"))
-		Expect(resource.Meta.GetMesh()).To(Equal("meshinit"))
+		Expect(resource.Meta.GetMesh()).To(Equal(core_model.NoMesh))
+	})
+
+	It("should apply multiple resources of same type", func() {
+		// given
+		rootCmd.SetArgs([]string{
+			"--config-file", filepath.Join("..", "testdata", "sample-kumactl.config.yaml"),
+			"apply", "-f", filepath.Join("testdata", "apply-multiple-resource-same-type.yaml")},
+		)
+
+		// when
+		err := rootCmd.Execute()
+		// then
+		Expect(err).ToNot(HaveOccurred())
+
+		// and
+		resource := mesh.DataplaneResourceList{}
+		err = store.List(context.Background(), &resource, core_store.ListByMesh("default"))
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(resource.Items[0].Meta.GetName()).To(Equal("sample1"))
+		Expect(resource.Items[1].Meta.GetName()).To(Equal("sample2"))
+	})
+
+	It("should apply multiple resources of different type", func() {
+		// given
+		rootCmd.SetArgs([]string{
+			"--config-file", filepath.Join("..", "testdata", "sample-kumactl.config.yaml"),
+			"apply", "-f", filepath.Join("testdata", "apply-multiple-resource-different-type.yaml")},
+		)
+
+		// when
+		err := rootCmd.Execute()
+		// then
+		Expect(err).ToNot(HaveOccurred())
+
+		// and
+		dataplaneResource := mesh.NewDataplaneResource()
+		err = store.Get(context.Background(), dataplaneResource, core_store.GetByKey("sample1", "default"))
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(dataplaneResource.Meta.GetName()).To(Equal("sample1"))
+		Expect(dataplaneResource.Meta.GetMesh()).To(Equal("default"))
+
+		secret := system.NewSecretResource()
+		err = store.Get(context.Background(), secret, core_store.GetByKey("sample", "default"))
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(secret.Meta.GetName()).To(Equal("sample"))
+		Expect(secret.Meta.GetMesh()).To(Equal("default"))
+
 	})
 
 	It("should return kuma api server error", func() {
@@ -345,7 +372,7 @@ var _ = Describe("kumactl apply", func() {
 				Name: "sample",
 				Mesh: "default",
 			},
-			Spec: v1alpha1.Dataplane{
+			Spec: &v1alpha1.Dataplane{
 				Networking: &v1alpha1.Dataplane_Networking{
 					Address: "1.1.1.1",
 				},
@@ -366,16 +393,16 @@ var _ = Describe("kumactl apply", func() {
 		// then
 		Expect(err).ToNot(HaveOccurred())
 		// then
-		var resource mesh.DataplaneResource
-		err = store.Get(context.Background(), &resource, core_store.GetByKey("sample", "default"))
+		resource := mesh.NewDataplaneResource()
+		err = store.Get(context.Background(), resource, core_store.GetByKey("sample", "default"))
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resource.Spec.Networking.Address).To(Equal("1.1.1.1"))
 
 		// then
 		Expect(buf.String()).To(Equal(
-			`creationTime: "1970-01-01T00:00:00Z"
+			`creationTime: "0001-01-01T00:00:00Z"
 mesh: default
-modificationTime: "1970-01-01T00:00:00Z"
+modificationTime: "0001-01-01T00:00:00Z"
 name: sample
 networking:
   address: 2.2.2.2
@@ -396,8 +423,8 @@ type: Dataplane
 		Expect(err).ToNot(HaveOccurred())
 
 		// when
-		resource := mesh.DataplaneResource{}
-		err = store.Get(context.Background(), &resource, core_store.GetByKey("sample", "default"))
+		resource := mesh.NewDataplaneResource()
+		err = store.Get(context.Background(), resource, core_store.GetByKey("sample", "default"))
 		Expect(err).ToNot(HaveOccurred())
 
 		// then
@@ -431,14 +458,14 @@ type: Dataplane
 type: Dataplane
 name: dp-1
 `,
-			err: "YAML contains invalid resource: Mesh field cannot be empty",
+			err: "mesh: cannot be empty",
 		}),
 		Entry("no name", testCase{
 			resource: `
 type: Dataplane
 mesh: default
 `,
-			err: "YAML contains invalid resource: Name field cannot be empty",
+			err: "name: cannot be empty",
 		}),
 		Entry("invalid data", testCase{
 			resource: `
@@ -449,6 +476,10 @@ networking:
   inbound: 0 # should be a string
 `,
 			err: "YAML contains invalid resource: json: cannot unmarshal number into Go value of type []json.RawMessage",
+		}),
+		Entry("no resource", testCase{
+			resource: ``,
+			err:      "no resource(s) passed to apply",
 		}),
 	)
 })

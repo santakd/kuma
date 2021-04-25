@@ -7,9 +7,17 @@ import (
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	"github.com/Kong/kuma/pkg/xds/envoy/tags"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	"github.com/kumahq/kuma/pkg/xds/envoy/tags"
 )
+
+func strictMatch(re *regexp.Regexp, s string) bool {
+	idx := re.FindStringIndex(s)
+	if idx == nil {
+		return false
+	}
+	return idx[0] == 0 && idx[1] == len(s)
+}
 
 var _ = Describe("MatchingRegex", func() {
 
@@ -27,7 +35,7 @@ var _ = Describe("MatchingRegex", func() {
 			// then
 			Expect(err).ToNot(HaveOccurred())
 			// when
-			matched := re.MatchString(tags.Serialize(given.serviceTags))
+			matched := strictMatch(re, tags.Serialize(given.serviceTags))
 			// then
 			Expect(matched).To(Equal(given.expected))
 		},
@@ -39,6 +47,18 @@ var _ = Describe("MatchingRegex", func() {
 			selector: mesh_proto.SingleValueTagSet{
 				"tag1": "value1",
 				"tag2": "value2",
+			},
+			expected: true,
+		}),
+		Entry("match 3 one-value tags", testCase{
+			serviceTags: mesh_proto.MultiValueTagSet{
+				"tag1": {"value1": true},
+				"tag2": {"value2": true},
+				"tag3": {"value3": true},
+			},
+			selector: mesh_proto.SingleValueTagSet{
+				"tag2": "value2",
+				"tag3": "value3",
 			},
 			expected: true,
 		}),
@@ -142,31 +162,31 @@ var _ = Describe("RegexOR", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			for i, service := range given.servicesTags {
-				matched := re.MatchString(tags.Serialize(service))
+				matched := strictMatch(re, tags.Serialize(service))
 				Expect(matched).To(Equal(given.expected[i]))
 			}
 		},
 		Entry("should match 2 services of 3", testCase{
 			servicesTags: []mesh_proto.MultiValueTagSet{
 				{
-					"service": {"web": true, "web-api": true},
+					"kuma.io/service": {"web": true, "web-api": true},
 				},
 				{
-					"service": {"backend": true},
-					"version": {"3": true},
+					"kuma.io/service": {"backend": true},
+					"version":         {"3": true},
 				},
 				{
-					"service": {"backend": true},
-					"version": {"2": true},
+					"kuma.io/service": {"backend": true},
+					"version":         {"2": true},
 				},
 			},
 			selectors: []mesh_proto.SingleValueTagSet{
 				{
-					"service": "web",
+					"kuma.io/service": "web",
 				},
 				{
-					"service": "backend",
-					"version": "3",
+					"kuma.io/service": "backend",
+					"version":         "3",
 				},
 			},
 			expected: []bool{true, true, false},

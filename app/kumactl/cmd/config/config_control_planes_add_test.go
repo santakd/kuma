@@ -14,10 +14,12 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/Kong/kuma/app/kumactl/pkg/config"
-	"github.com/Kong/kuma/pkg/api-server/types"
+	"github.com/kumahq/kuma/pkg/version"
 
-	"github.com/Kong/kuma/app/kumactl/cmd"
+	"github.com/kumahq/kuma/app/kumactl/pkg/config"
+	"github.com/kumahq/kuma/pkg/api-server/types"
+
+	"github.com/kumahq/kuma/app/kumactl/cmd"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
@@ -184,8 +186,10 @@ var _ = Describe("kumactl config control-planes add", func() {
 					"config", "control-planes", "add",
 					"--name", "example",
 					"--address", fmt.Sprintf("http://localhost:%d", port),
-					"--admin-client-cert", "/tmp/client.pem",
-					"--admin-client-key", "/tmp/client.key.pem"}
+					"--ca-cert-file", "/tmp/ca-cert.pem",
+					"--client-cert-file", "/tmp/client.cert.pem",
+					"--client-key-file", "/tmp/client.key.pem",
+				}
 				if given.overwrite {
 					args = append(args, "--overwrite")
 				}
@@ -249,7 +253,7 @@ switched active Control Plane to "example"
 func setupCpIndexServer() (*httptest.Server, int) {
 	return setupCpServer(func(writer http.ResponseWriter, req *http.Request) {
 		response := types.IndexResponse{
-			Tagline: types.TaglineKuma,
+			Tagline: version.Product,
 			Version: "unknown",
 		}
 		marshaled, err := json.Marshal(response)

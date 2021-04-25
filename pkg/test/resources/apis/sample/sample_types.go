@@ -3,10 +3,10 @@ package sample
 import (
 	"github.com/pkg/errors"
 
-	"github.com/Kong/kuma/pkg/core/resources/model"
-	"github.com/Kong/kuma/pkg/core/resources/registry"
-	"github.com/Kong/kuma/pkg/core/validators"
-	proto "github.com/Kong/kuma/pkg/test/apis/sample/v1alpha1"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
+	"github.com/kumahq/kuma/pkg/core/resources/registry"
+	"github.com/kumahq/kuma/pkg/core/validators"
+	proto "github.com/kumahq/kuma/pkg/test/apis/sample/v1alpha1"
 )
 
 const (
@@ -17,7 +17,13 @@ var _ model.Resource = &TrafficRouteResource{}
 
 type TrafficRouteResource struct {
 	Meta model.ResourceMeta
-	Spec proto.TrafficRoute
+	Spec *proto.TrafficRoute
+}
+
+func NewTrafficRouteResource() *TrafficRouteResource {
+	return &TrafficRouteResource{
+		Spec: &proto.TrafficRoute{},
+	}
 }
 
 func (t *TrafficRouteResource) GetType() model.ResourceType {
@@ -30,14 +36,14 @@ func (t *TrafficRouteResource) SetMeta(m model.ResourceMeta) {
 	t.Meta = m
 }
 func (t *TrafficRouteResource) GetSpec() model.ResourceSpec {
-	return &t.Spec
+	return t.Spec
 }
 func (t *TrafficRouteResource) SetSpec(spec model.ResourceSpec) error {
 	route, ok := spec.(*proto.TrafficRoute)
 	if !ok {
 		return errors.New("invalid type of spec")
 	} else {
-		t.Spec = *route
+		t.Spec = route
 		return nil
 	}
 }
@@ -47,6 +53,10 @@ func (t *TrafficRouteResource) Validate() error {
 		err.AddViolation("path", "cannot be empty")
 	}
 	return err.OrNil()
+}
+
+func (t *TrafficRouteResource) Scope() model.ResourceScope {
+	return model.ScopeMesh
 }
 
 var _ model.ResourceList = &TrafficRouteResourceList{}
@@ -69,7 +79,7 @@ func (l *TrafficRouteResourceList) GetItemType() model.ResourceType {
 }
 
 func (l *TrafficRouteResourceList) NewItem() model.Resource {
-	return &TrafficRouteResource{}
+	return NewTrafficRouteResource()
 }
 func (l *TrafficRouteResourceList) AddItem(r model.Resource) error {
 	if trr, ok := r.(*TrafficRouteResource); ok {
@@ -79,14 +89,11 @@ func (l *TrafficRouteResourceList) AddItem(r model.Resource) error {
 		return model.ErrorInvalidItemType((*TrafficRouteResource)(nil), r)
 	}
 }
-func (l *TrafficRouteResourceList) GetPagination() model.Pagination {
-	return l.Pagination
-}
-func (l *TrafficRouteResourceList) SetPagination(pagination model.Pagination) {
-	l.Pagination = pagination
+func (l *TrafficRouteResourceList) GetPagination() *model.Pagination {
+	return &l.Pagination
 }
 
 func init() {
-	registry.RegisterType(&TrafficRouteResource{})
+	registry.RegisterType(NewTrafficRouteResource())
 	registry.RegistryListType(&TrafficRouteResourceList{})
 }

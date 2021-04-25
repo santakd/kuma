@@ -4,9 +4,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
-	"github.com/Kong/kuma/app/kumactl/pkg/install/data"
-	"github.com/Kong/kuma/app/kumactl/pkg/install/k8s"
-	"github.com/Kong/kuma/app/kumactl/pkg/install/k8s/tracing"
+	kumactl_data "github.com/kumahq/kuma/app/kumactl/data"
+	"github.com/kumahq/kuma/app/kumactl/pkg/install/data"
+	"github.com/kumahq/kuma/app/kumactl/pkg/install/k8s"
 )
 
 type tracingTemplateArgs struct {
@@ -28,7 +28,7 @@ func newInstallTracing() *cobra.Command {
 				Namespace: args.Namespace,
 			}
 
-			templateFiles, err := data.ReadFiles(tracing.Templates)
+			templateFiles, err := data.ReadFiles(kumactl_data.InstallTracingFS())
 			if err != nil {
 				return errors.Wrap(err, "Failed to read template files")
 			}
@@ -38,7 +38,10 @@ func newInstallTracing() *cobra.Command {
 				return errors.Wrap(err, "Failed to render template files")
 			}
 
-			sortedResources := k8s.SortResourcesByKind(renderedFiles)
+			sortedResources, err := k8s.SortResourcesByKind(renderedFiles)
+			if err != nil {
+				return errors.Wrap(err, "Failed to sort resources by kind")
+			}
 
 			singleFile := data.JoinYAML(sortedResources)
 

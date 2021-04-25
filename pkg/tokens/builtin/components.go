@@ -1,14 +1,12 @@
 package builtin
 
 import (
-	"github.com/Kong/kuma/pkg/core/runtime"
-	"github.com/Kong/kuma/pkg/tokens/builtin/issuer"
+	"github.com/kumahq/kuma/pkg/core/resources/manager"
+	"github.com/kumahq/kuma/pkg/tokens/builtin/issuer"
 )
 
-func NewDataplaneTokenIssuer(rt runtime.Runtime) (issuer.DataplaneTokenIssuer, error) {
-	key, err := issuer.GetSigningKey(rt.SecretManager())
-	if err != nil {
-		return nil, err
-	}
-	return issuer.NewDataplaneTokenIssuer(key), nil
+func NewDataplaneTokenIssuer(resManager manager.ReadOnlyResourceManager) (issuer.DataplaneTokenIssuer, error) {
+	return issuer.NewDataplaneTokenIssuer(func(meshName string) ([]byte, error) {
+		return issuer.GetSigningKey(resManager, issuer.DataplaneTokenPrefix, meshName)
+	}), nil
 }

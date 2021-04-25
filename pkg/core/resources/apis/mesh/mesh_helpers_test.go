@@ -1,14 +1,16 @@
 package mesh_test
 
 import (
+	"time"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	. "github.com/Kong/kuma/pkg/core/resources/apis/mesh"
+	. "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	"github.com/Kong/kuma/pkg/util/proto"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	"github.com/kumahq/kuma/pkg/util/proto"
 )
 
 var _ = Describe("MeshResource", func() {
@@ -29,12 +31,12 @@ var _ = Describe("MeshResource", func() {
 				expected: false,
 			}),
 			Entry("mesh.metrics == nil", testCase{
-				mesh:     &MeshResource{},
+				mesh:     NewMeshResource(),
 				expected: false,
 			}),
 			Entry("mesh.metrics.prometheus == nil", testCase{
 				mesh: &MeshResource{
-					Spec: mesh_proto.Mesh{
+					Spec: &mesh_proto.Mesh{
 						Metrics: &mesh_proto.Metrics{},
 					},
 				},
@@ -42,7 +44,7 @@ var _ = Describe("MeshResource", func() {
 			}),
 			Entry("mesh.metrics.prometheus != nil", testCase{
 				mesh: &MeshResource{
-					Spec: mesh_proto.Mesh{
+					Spec: &mesh_proto.Mesh{
 						Metrics: &mesh_proto.Metrics{
 							EnabledBackend: "prometheus-1",
 							Backends: []*mesh_proto.MetricsBackend{
@@ -81,21 +83,21 @@ var _ = Describe("MeshResource", func() {
 			},
 			Entry("two backends and name that exists", testCase{
 				mesh: &MeshResource{
-					Spec: mesh_proto.Mesh{
+					Spec: &mesh_proto.Mesh{
 						Tracing: &mesh_proto.Tracing{
 							DefaultBackend: "zipkin-us",
 							Backends: []*mesh_proto.TracingBackend{
 								{
 									Name: "zipkin-us",
 									Type: mesh_proto.TracingZipkinType,
-									Config: proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
+									Conf: proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
 										Url: "http://zipkin.us:8080/v1/spans",
 									}),
 								},
 								{
 									Name: "zipkin-eu",
 									Type: mesh_proto.TracingZipkinType,
-									Config: proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
+									Conf: proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
 										Url: "http://zipkin.eu:8080/v1/spans",
 									}),
 								},
@@ -108,14 +110,14 @@ var _ = Describe("MeshResource", func() {
 			}),
 			Entry("nil when backend does not exist", testCase{
 				mesh: &MeshResource{
-					Spec: mesh_proto.Mesh{
+					Spec: &mesh_proto.Mesh{
 						Tracing: &mesh_proto.Tracing{
 							DefaultBackend: "zipkin-us",
 							Backends: []*mesh_proto.TracingBackend{
 								{
 									Name: "zipkin-us",
 									Type: mesh_proto.TracingZipkinType,
-									Config: proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
+									Conf: proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
 										Url: "http://zipkin.us:8080/v1/spans",
 									}),
 								},
@@ -128,21 +130,21 @@ var _ = Describe("MeshResource", func() {
 			}),
 			Entry("default backend when name is not specified", testCase{
 				mesh: &MeshResource{
-					Spec: mesh_proto.Mesh{
+					Spec: &mesh_proto.Mesh{
 						Tracing: &mesh_proto.Tracing{
 							DefaultBackend: "zipkin-eu",
 							Backends: []*mesh_proto.TracingBackend{
 								{
 									Name: "zipkin-us",
 									Type: mesh_proto.TracingZipkinType,
-									Config: proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
+									Conf: proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
 										Url: "http://zipkin.us:8080/v1/spans",
 									}),
 								},
 								{
 									Name: "zipkin-eu",
 									Type: mesh_proto.TracingZipkinType,
-									Config: proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
+									Conf: proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
 										Url: "http://zipkin.eu:8080/v1/spans",
 									}),
 								},
@@ -155,13 +157,13 @@ var _ = Describe("MeshResource", func() {
 			}),
 			Entry("nil when name and default backend are not specified", testCase{
 				mesh: &MeshResource{
-					Spec: mesh_proto.Mesh{
+					Spec: &mesh_proto.Mesh{
 						Tracing: &mesh_proto.Tracing{
 							Backends: []*mesh_proto.TracingBackend{
 								{
 									Name: "zipkin-us",
 									Type: mesh_proto.TracingZipkinType,
-									Config: proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
+									Conf: proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
 										Url: "http://zipkin.us:8080/v1/spans",
 									}),
 								},
@@ -178,7 +180,7 @@ var _ = Describe("MeshResource", func() {
 	Describe("should return logging backends", func() {
 		It("should return logging backends if not empty", func() {
 			mesh := &MeshResource{
-				Spec: mesh_proto.Mesh{
+				Spec: &mesh_proto.Mesh{
 					Logging: &mesh_proto.Logging{
 						Backends: []*mesh_proto.LoggingBackend{
 							{
@@ -198,7 +200,7 @@ var _ = Describe("MeshResource", func() {
 		})
 		It("should return default logging backend if logging backends is empty", func() {
 			mesh := &MeshResource{
-				Spec: mesh_proto.Mesh{
+				Spec: &mesh_proto.Mesh{
 					Logging: &mesh_proto.Logging{
 						DefaultBackend: "default-backend",
 						Backends:       []*mesh_proto.LoggingBackend{},
@@ -213,20 +215,20 @@ var _ = Describe("MeshResource", func() {
 	Describe("should return tracing backends", func() {
 		It("should return tracing backends if not empty", func() {
 			mesh := &MeshResource{
-				Spec: mesh_proto.Mesh{
+				Spec: &mesh_proto.Mesh{
 					Tracing: &mesh_proto.Tracing{
 						Backends: []*mesh_proto.TracingBackend{
 							{
 								Name: "zipkin-us",
 								Type: mesh_proto.TracingZipkinType,
-								Config: proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
+								Conf: proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
 									Url: "http://zipkin.us:8080/v1/spans",
 								}),
 							},
 							{
 								Name: "zipkin-eu",
 								Type: mesh_proto.TracingZipkinType,
-								Config: proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
+								Conf: proto.MustToStruct(&mesh_proto.ZipkinTracingBackendConfig{
 									Url: "http://zipkin.eu:8080/v1/spans",
 								}),
 							},
@@ -240,7 +242,7 @@ var _ = Describe("MeshResource", func() {
 		})
 		It("should return default tracing backend if tracing backends is empty", func() {
 			mesh := &MeshResource{
-				Spec: mesh_proto.Mesh{
+				Spec: &mesh_proto.Mesh{
 					Tracing: &mesh_proto.Tracing{
 						Backends: []*mesh_proto.TracingBackend{},
 					},
@@ -249,5 +251,35 @@ var _ = Describe("MeshResource", func() {
 			backends := mesh.GetTracingBackends()
 			Expect(backends).To(Equal(""))
 		})
+	})
+	Describe("ParseDuration", func() {
+
+		type testCase struct {
+			input  string
+			output time.Duration
+		}
+
+		DescribeTable("should return the correct duration",
+			func(given testCase) {
+				duration, _ := ParseDuration(given.input)
+				Expect(given.output).To(Equal(duration))
+			},
+			Entry("should return 0 if seconds is 0", testCase{
+				input:  "0s",
+				output: 0,
+			}),
+			Entry("should return minute", testCase{
+				input:  "5m",
+				output: 5 * time.Minute,
+			}),
+			Entry("should return day", testCase{
+				input:  "4d",
+				output: 4 * 24 * time.Hour,
+			}),
+			Entry("should return year", testCase{
+				input:  "5y",
+				output: 5 * 365 * 24 * time.Hour,
+			}),
+		)
 	})
 })

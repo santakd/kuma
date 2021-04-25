@@ -9,9 +9,10 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	config "github.com/Kong/kuma/pkg/config/api-server"
-	"github.com/Kong/kuma/pkg/plugins/resources/memory"
-	kuma_version "github.com/Kong/kuma/pkg/version"
+	config "github.com/kumahq/kuma/pkg/config/api-server"
+	"github.com/kumahq/kuma/pkg/metrics"
+	"github.com/kumahq/kuma/pkg/plugins/resources/memory"
+	kuma_version "github.com/kumahq/kuma/pkg/version"
 )
 
 var _ = Describe("Index Endpoints", func() {
@@ -35,7 +36,9 @@ var _ = Describe("Index Endpoints", func() {
 
 		// setup
 		resourceStore := memory.NewStore()
-		apiServer := createTestApiServer(resourceStore, config.DefaultApiServerConfig())
+		metrics, err := metrics.NewMetrics("Standalone")
+		Expect(err).ToNot(HaveOccurred())
+		apiServer := createTestApiServer(resourceStore, config.DefaultApiServerConfig(), true, metrics)
 
 		stop := make(chan struct{})
 		go func() {
@@ -46,12 +49,12 @@ var _ = Describe("Index Endpoints", func() {
 
 		// wait for the server
 		Eventually(func() error {
-			_, err := http.Get("http://localhost" + apiServer.Address())
+			_, err := http.Get("http://" + apiServer.Address())
 			return err
 		}, "3s").ShouldNot(HaveOccurred())
 
 		// when
-		resp, err := http.Get("http://localhost" + apiServer.Address())
+		resp, err := http.Get("http://" + apiServer.Address())
 		Expect(err).ToNot(HaveOccurred())
 
 		// then

@@ -1,20 +1,16 @@
 conf:
-  activeChecks:
-    interval: 10s
-    timeout: 2s
-    unhealthyThreshold: 3
-    healthyThreshold: 1
-  passiveChecks:
-    unhealthyThreshold: 3
-    penaltyInterval: 5s
-creationTime: 0001-01-01T00:00:00Z
+  healthyThreshold: 1
+  interval: 10s
+  timeout: 2s
+  unhealthyThreshold: 3
+creationTime: "0001-01-01T00:00:00Z"
 destinations:
-  - match:
-      service: backend
+- match:
+    service: backend
 mesh: default
-modificationTime: 0001-01-01T00:00:00Z
+modificationTime: "0001-01-01T00:00:00Z"
 name: healthcheck-1
 sources:
-  - match:
-      service: web
+- match:
+    service: web
 type: HealthCheck

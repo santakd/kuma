@@ -6,8 +6,8 @@ import (
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	. "github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	util_proto "github.com/Kong/kuma/pkg/util/proto"
+	. "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	util_proto "github.com/kumahq/kuma/pkg/util/proto"
 )
 
 var _ = Describe("HealthCheck", func() {
@@ -19,10 +19,10 @@ var _ = Describe("HealthCheck", func() {
 		DescribeTable("should validate all fields and return as much individual errors as possible",
 			func(given testCase) {
 				// setup
-				healthCheck := HealthCheckResource{}
+				healthCheck := NewHealthCheckResource()
 
 				// when
-				err := util_proto.FromYAML([]byte(given.healthCheck), &healthCheck.Spec)
+				err := util_proto.FromYAML([]byte(given.healthCheck), healthCheck.Spec)
 				// then
 				Expect(err).ToNot(HaveOccurred())
 
@@ -45,7 +45,7 @@ var _ = Describe("HealthCheck", func() {
                 - field: destinations
                   message: must have at least one element
                 - field: conf
-                  message: must have either active or passive checks configured
+                  message: has to be defined
 `,
 			}),
 			Entry("selectors without tags", testCase{
@@ -54,119 +54,128 @@ var _ = Describe("HealthCheck", func() {
                 - match: {}
                 destinations:
                 - match: {}
-                conf:
-                  activeChecks: {}
-                  passiveChecks: {}
 `,
 				expected: `
                 violations:
                 - field: sources[0].match
                   message: must have at least one tag
                 - field: sources[0].match
-                  message: mandatory tag "service" is missing
+                  message: mandatory tag "kuma.io/service" is missing
                 - field: destinations[0].match
-                  message: must consist of exactly one tag "service"
+                  message: must consist of exactly one tag "kuma.io/service"
                 - field: destinations[0].match
-                  message: mandatory tag "service" is missing
+                  message: mandatory tag "kuma.io/service" is missing
                 - field: conf
-                  message: must have either active or passive checks configured
+                  message: has to be defined
 `,
 			}),
 			Entry("selectors with empty tags values", testCase{
 				healthCheck: `
                 sources:
                 - match:
-                    service:
+                    kuma.io/service:
                     region:
                 destinations:
                 - match:
-                    service:
+                    kuma.io/service:
                     region:
 `,
 				expected: `
                 violations:
+                - field: sources[0].match["kuma.io/service"]
+                  message: tag value must be non-empty
                 - field: sources[0].match["region"]
                   message: tag value must be non-empty
-                - field: sources[0].match["service"]
-                  message: tag value must be non-empty
                 - field: destinations[0].match
-                  message: must consist of exactly one tag "service"
+                  message: must consist of exactly one tag "kuma.io/service"
+                - field: destinations[0].match["kuma.io/service"]
+                  message: tag value must be non-empty
                 - field: destinations[0].match["region"]
                   message: tag "region" is not allowed
                 - field: destinations[0].match["region"]
                   message: tag value must be non-empty
-                - field: destinations[0].match["service"]
-                  message: tag value must be non-empty
                 - field: conf
-                  message: must have either active or passive checks configured`,
-			}),
-			Entry("empty conf for active and passive checks", testCase{
-				healthCheck: `
-                sources:
-                - match:
-                    service: web
-                    region: eu
-                destinations:
-                - match:
-                    service: backend
-                conf:
-                  activeChecks: {}
-                  passiveChecks: {}
-`,
-				expected: `
-                violations:
-                - field: conf
-                  message: must have either active or passive checks configured
-`,
+                  message: has to be defined`,
 			}),
 			Entry("invalid active checks conf", testCase{
 				healthCheck: `
                 sources:
                 - match:
-                    service: web
+                    kuma.io/service: web
                     region: eu
                 destinations:
                 - match:
-                    service: backend
+                    kuma.io/service: backend
                 conf:
-                  activeChecks:
-                    interval: 0s
-                    timeout: 0s
-                    unhealthyThreshold: 0
-                    healthyThreshold: 0
+                  interval: 0s
+                  timeout: 0s
+                  unhealthyThreshold: 0
+                  healthyThreshold: 0
+                  initialJitter: 0s
+                  intervalJitter: 0s
+                  healthyPanicThreshold: 101
+                  noTrafficInterval: 0s
+                  http:
+                    path: ""
+                    requestHeadersToAdd:
+                    - header:
+                        value: foo
+                    - append: false
+                    expectedStatuses:
+                    - 99
+                    - 600
 `,
 				expected: `
                 violations:
-                - field: conf.activeChecks.interval
+                - field: conf.interval
                   message: must have a positive value
-                - field: conf.activeChecks.timeout
+                - field: conf.timeout
                   message: must have a positive value
-                - field: conf.activeChecks.unhealthyThreshold
+                - field: conf.unhealthyThreshold
                   message: must have a positive value
-                - field: conf.activeChecks.healthyThreshold
+                - field: conf.healthyThreshold
                   message: must have a positive value
+                - field: conf.initialJitter
+                  message: must have a positive value
+                - field: conf.intervalJitter
+                  message: must have a positive value
+                - field: conf.noTrafficInterval
+                  message: must have a positive value
+                - field: conf.healthyPanicThreshold
+                  message: must be in range [0.0 - 100.0]
+                - field: conf.http.path
+                  message: has to be defined and cannot be empty
+                - field: conf.http.expectedStatuses[0]
+                  message: must be in range [100, 600)
+                - field: conf.http.expectedStatuses[1]
+                  message: must be in range [100, 600)
+                - field: conf.http.requestHeadersToAdd[0].header.key
+                  message: cannot be empty
+                - field: conf.http.requestHeadersToAdd[1].header
+                  message: has to be defined
 `,
 			}),
-			Entry("invalid passive checks conf", testCase{
+			Entry("invalid active checks http configuration", testCase{
 				healthCheck: `
                 sources:
                 - match:
-                    service: web
+                    kuma.io/service: web
                     region: eu
                 destinations:
                 - match:
-                    service: backend
+                    kuma.io/service: backend
                 conf:
-                  passiveChecks:
-                    unhealthyThreshold: 0
-                    penaltyInterval: 0s
+                  interval: 3s
+                  timeout: 10s
+                  unhealthyThreshold: 3
+                  healthyThreshold: 1
+                  http: {}
 `,
 				expected: `
                 violations:
-                - field: conf.passiveChecks.unhealthyThreshold
-                  message: must have a positive value
-                - field: conf.passiveChecks.penaltyInterval
-                  message: must have a positive value`,
+                - field: conf.http.path
+                  message: has to be defined and cannot be empty
+`,
 			}),
 		)
 	})

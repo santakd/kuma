@@ -1,66 +1,82 @@
 package topology_test
 
 import (
-	"context"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	. "github.com/Kong/kuma/pkg/xds/topology"
+	"github.com/kumahq/kuma/pkg/core/datasource"
+	"github.com/kumahq/kuma/pkg/core/secrets/cipher"
+	secret_manager "github.com/kumahq/kuma/pkg/core/secrets/manager"
+	secret_store "github.com/kumahq/kuma/pkg/core/secrets/store"
+	"github.com/kumahq/kuma/pkg/plugins/resources/memory"
+	. "github.com/kumahq/kuma/pkg/xds/topology"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	mesh_core "github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	core_manager "github.com/Kong/kuma/pkg/core/resources/manager"
-	core_model "github.com/Kong/kuma/pkg/core/resources/model"
-	core_store "github.com/Kong/kuma/pkg/core/resources/store"
-	core_xds "github.com/Kong/kuma/pkg/core/xds"
-	memory_resources "github.com/Kong/kuma/pkg/plugins/resources/memory"
-	test_model "github.com/Kong/kuma/pkg/test/resources/model"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	mesh_core "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	core_xds "github.com/kumahq/kuma/pkg/core/xds"
+	test_model "github.com/kumahq/kuma/pkg/test/resources/model"
 )
 
 var _ = Describe("TrafficRoute", func() {
+	const defaultMeshName = "default"
+	defaultMeshWithMTLS := &mesh_core.MeshResource{
+		Meta: &test_model.ResourceMeta{
+			Name: defaultMeshName,
+		},
+		Spec: &mesh_proto.Mesh{
+			Mtls: &mesh_proto.Mesh_Mtls{
+				EnabledBackend: "ca-1",
+			},
+		},
+	}
+	defaultMeshWithoutMTLS := &mesh_core.MeshResource{
+		Meta: &test_model.ResourceMeta{
+			Name: defaultMeshName,
+		},
+		Spec: &mesh_proto.Mesh{
+			Mtls: &mesh_proto.Mesh_Mtls{
+				EnabledBackend: "",
+			},
+		},
+	}
+	defaultMeshWithLocality := &mesh_core.MeshResource{
+		Meta: &test_model.ResourceMeta{
+			Name: defaultMeshName,
+		},
+		Spec: &mesh_proto.Mesh{
+			Routing: &mesh_proto.Routing{
+				LocalityAwareLoadBalancing: true,
+			},
+		},
+	}
+	const nonDefaultMesh = "non-default"
 
-	var ctx context.Context
-	var rm core_manager.ResourceManager
+	var dataSourceLoader datasource.Loader
 
 	BeforeEach(func() {
-		ctx = context.Background()
-		rm = core_manager.NewResourceManager(memory_resources.NewStore())
+		secretManager := secret_manager.NewSecretManager(secret_store.NewSecretStore(memory.NewStore()), cipher.None(), nil)
+		dataSourceLoader = datasource.NewDataSourceLoader(secretManager)
 	})
-
 	Describe("GetOutboundTargets()", func() {
-
 		It("should pick proper dataplanes for each outbound destination", func() {
 			// given
-			mesh := &mesh_core.MeshResource{ // mesh that is relevant to this test case
-				Meta: &test_model.ResourceMeta{
-					Mesh: "demo",
-					Name: "demo",
-				},
-			}
-			otherMesh := &mesh_core.MeshResource{ // mesh that is irrelevant to this test case
-				Meta: &test_model.ResourceMeta{
-					Mesh: "default",
-					Name: "default",
-				},
-			}
 			backend := &mesh_core.DataplaneResource{ // dataplane that is a source of traffic
 				Meta: &test_model.ResourceMeta{
 					Mesh: "demo",
 					Name: "backend",
 				},
-				Spec: mesh_proto.Dataplane{
+				Spec: &mesh_proto.Dataplane{
 					Networking: &mesh_proto.Dataplane_Networking{
 						Address: "192.168.0.1",
 						Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
 							{
-								Tags:        map[string]string{"service": "backend", "region": "eu"},
+								Tags:        map[string]string{mesh_proto.ServiceTag: "backend", mesh_proto.RegionTag: "eu"},
 								Port:        8080,
 								ServicePort: 18080,
 							},
 							{
-								Tags:        map[string]string{"service": "frontend", "region": "eu"},
+								Tags:        map[string]string{mesh_proto.ServiceTag: "frontend", mesh_proto.RegionTag: "eu"},
 								Port:        7070,
 								ServicePort: 17070,
 							},
@@ -77,32 +93,14 @@ var _ = Describe("TrafficRoute", func() {
 					Mesh: "demo",
 					Name: "redis-v1",
 				},
-				Spec: mesh_proto.Dataplane{
+				Spec: &mesh_proto.Dataplane{
 					Networking: &mesh_proto.Dataplane_Networking{
 						Address: "192.168.0.2",
 						Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
 							{
-								Tags:        map[string]string{"service": "redis", "version": "v1"},
+								Tags:        map[string]string{mesh_proto.ServiceTag: "redis", "version": "v1"},
 								Port:        6379,
 								ServicePort: 16379,
-							},
-						},
-					},
-				},
-			}
-			redisV2 := &mesh_core.DataplaneResource{ // dataplane that must be ingored (due to `mesh: default`)
-				Meta: &test_model.ResourceMeta{
-					Mesh: "default", // other mesh
-					Name: "redis-v2",
-				},
-				Spec: mesh_proto.Dataplane{
-					Networking: &mesh_proto.Dataplane_Networking{
-						Address: "192.168.0.3",
-						Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-							{
-								Tags:        map[string]string{"service": "redis", "version": "v2"},
-								Port:        6379,
-								ServicePort: 26379,
 							},
 						},
 					},
@@ -113,12 +111,12 @@ var _ = Describe("TrafficRoute", func() {
 					Mesh: "demo",
 					Name: "redis-v3",
 				},
-				Spec: mesh_proto.Dataplane{
+				Spec: &mesh_proto.Dataplane{
 					Networking: &mesh_proto.Dataplane_Networking{
 						Address: "192.168.0.4",
 						Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
 							{
-								Tags:        map[string]string{"service": "redis", "version": "v3"},
+								Tags:        map[string]string{mesh_proto.ServiceTag: "redis", "version": "v3"},
 								Port:        6379,
 								ServicePort: 36379,
 							},
@@ -126,17 +124,17 @@ var _ = Describe("TrafficRoute", func() {
 					},
 				},
 			}
-			elasticEU := &mesh_core.DataplaneResource{ // dataplane that must be ingored (due to `region: eu`)
+			elasticEU := &mesh_core.DataplaneResource{ // dataplane that must be ingored (due to `kuma.io/region: eu`)
 				Meta: &test_model.ResourceMeta{
 					Mesh: "demo",
 					Name: "elastic-eu",
 				},
-				Spec: mesh_proto.Dataplane{
+				Spec: &mesh_proto.Dataplane{
 					Networking: &mesh_proto.Dataplane_Networking{
 						Address: "192.168.0.5",
 						Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
 							{
-								Tags:        map[string]string{"service": "elastic", "region": "eu"},
+								Tags:        map[string]string{mesh_proto.ServiceTag: "elastic", mesh_proto.RegionTag: "eu"},
 								Port:        9200,
 								ServicePort: 49200,
 							},
@@ -149,12 +147,12 @@ var _ = Describe("TrafficRoute", func() {
 					Mesh: "demo",
 					Name: "elastic-us",
 				},
-				Spec: mesh_proto.Dataplane{
+				Spec: &mesh_proto.Dataplane{
 					Networking: &mesh_proto.Dataplane_Networking{
 						Address: "192.168.0.6",
 						Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
 							{
-								Tags:        map[string]string{"service": "elastic", "region": "us"},
+								Tags:        map[string]string{mesh_proto.ServiceTag: "elastic", mesh_proto.RegionTag: "us"},
 								Port:        9200,
 								ServicePort: 59200,
 							},
@@ -162,121 +160,117 @@ var _ = Describe("TrafficRoute", func() {
 					},
 				},
 			}
-			destinations := core_xds.DestinationMap{
-				"redis": []mesh_proto.TagSelector{
-					{"service": "redis", "version": "v1"},
-					{"service": "redis", "version": "v2"},
-				},
-				"elastic": []mesh_proto.TagSelector{
-					{"service": "elastic", "region": "us"},
-					{"service": "elastic", "region": "au"},
-				},
+			dataplanes := &mesh_core.DataplaneResourceList{
+				Items: []*mesh_core.DataplaneResource{backend, redisV1, redisV3, elasticEU, elasticUS},
 			}
-			for _, resource := range []core_model.Resource{mesh, backend, redisV1, redisV3, elasticEU, elasticUS, otherMesh, redisV2} {
-				// when
-				err := rm.Create(ctx, resource, core_store.CreateBy(core_model.MetaToResourceKey(resource.GetMeta())))
-				// then
-				Expect(err).ToNot(HaveOccurred())
-			}
+
+			externalServices := &mesh_core.ExternalServiceResourceList{}
 
 			// when
-			targets, err := GetOutboundTargets(ctx, backend, destinations, rm)
+			targets := BuildEndpointMap(defaultMeshWithMTLS, "zone-1", dataplanes.Items, externalServices.Items, dataSourceLoader)
 
-			// then
-			Expect(err).ToNot(HaveOccurred())
-			// and
-			Expect(targets).To(HaveLen(2))
+			Expect(targets).To(HaveLen(4))
 			// and
 			Expect(targets).To(HaveKeyWithValue("redis", []core_xds.Endpoint{
-				{Target: "192.168.0.2", Port: 6379, Tags: map[string]string{"service": "redis", "version": "v1"}},
+				{
+					Target: "192.168.0.2",
+					Port:   6379,
+					Tags:   map[string]string{mesh_proto.ServiceTag: "redis", "version": "v1"},
+					Weight: 1,
+				},
+				{
+					Target: "192.168.0.4",
+					Port:   6379,
+					Tags: map[string]string{
+						mesh_proto.ServiceTag: "redis",
+						"version":             "v3",
+					},
+					Weight: 1,
+				},
 			}))
 			Expect(targets).To(HaveKeyWithValue("elastic", []core_xds.Endpoint{
-				{Target: "192.168.0.6", Port: 9200, Tags: map[string]string{"service": "elastic", "region": "us"}},
+				{
+					Target: "192.168.0.5",
+					Port:   9200,
+					Tags: map[string]string{
+						mesh_proto.ServiceTag: "elastic",
+						mesh_proto.RegionTag:  "eu",
+					},
+					Locality: &core_xds.Locality{
+						Region: "eu",
+					},
+					Weight: 1,
+				},
+				{
+					Target: "192.168.0.6",
+					Port:   9200,
+					Tags:   map[string]string{mesh_proto.ServiceTag: "elastic", mesh_proto.RegionTag: "us"},
+					Locality: &core_xds.Locality{
+						Region: "us",
+					},
+					Weight: 1,
+				},
+			}))
+			Expect(targets).To(HaveKeyWithValue("frontend", []core_xds.Endpoint{
+				{
+					Target: "192.168.0.1",
+					Port:   7070,
+					Tags: map[string]string{
+						mesh_proto.ServiceTag: "frontend",
+						mesh_proto.RegionTag:  "eu",
+					},
+					Locality: &core_xds.Locality{
+						Region: "eu",
+					},
+					Weight: 1,
+				},
+			}))
+			Expect(targets).To(HaveKeyWithValue("backend", []core_xds.Endpoint{
+				{
+					Target: "192.168.0.1",
+					Port:   8080,
+					Tags: map[string]string{
+						mesh_proto.ServiceTag: "backend",
+						mesh_proto.RegionTag:  "eu",
+					},
+					Locality: &core_xds.Locality{
+						Region: "eu",
+					},
+					Weight: 1,
+				},
 			}))
 		})
 	})
 
 	Describe("BuildEndpointMap()", func() {
 		type testCase struct {
-			destinations core_xds.DestinationMap
-			dataplanes   []*mesh_core.DataplaneResource
-			expected     core_xds.EndpointMap
+			dataplanes       []*mesh_core.DataplaneResource
+			externalServices []*mesh_core.ExternalServiceResource
+			mesh             *mesh_core.MeshResource
+			expected         core_xds.EndpointMap
 		}
 		DescribeTable("should include only those dataplanes that match given selectors",
 			func(given testCase) {
 				// when
-				endpoints := BuildEndpointMap(given.destinations, given.dataplanes)
+				endpoints := BuildEndpointMap(given.mesh, "zone-1", given.dataplanes, given.externalServices, dataSourceLoader)
 				// then
 				Expect(endpoints).To(Equal(given.expected))
 			},
-			Entry("no destinations", testCase{
-				destinations: core_xds.DestinationMap{},
-				dataplanes:   []*mesh_core.DataplaneResource{},
-				expected:     nil,
-			}),
 			Entry("no dataplanes", testCase{
-				destinations: core_xds.DestinationMap{
-					"redis": []mesh_proto.TagSelector{{"service": "redis"}},
-				},
 				dataplanes: []*mesh_core.DataplaneResource{},
+				mesh:       defaultMeshWithMTLS,
 				expected:   core_xds.EndpointMap{},
 			}),
-			Entry("no dataplanes for that service", testCase{
-				destinations: core_xds.DestinationMap{
-					"redis": []mesh_proto.TagSelector{{"service": "redis"}},
-				},
+			Entry("ingress in the list of dataplanes", testCase{
 				dataplanes: []*mesh_core.DataplaneResource{
 					{
-						Spec: mesh_proto.Dataplane{
+						Meta: &test_model.ResourceMeta{Mesh: defaultMeshName},
+						Spec: &mesh_proto.Dataplane{
 							Networking: &mesh_proto.Dataplane_Networking{
 								Address: "192.168.0.1",
 								Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
 									{
-										Tags:        map[string]string{"service": "elastic"},
-										Port:        9200,
-										ServicePort: 19200,
-									},
-								},
-							},
-						},
-					},
-				},
-				expected: core_xds.EndpointMap{},
-			}),
-			Entry("no dataplanes with matching tags", testCase{
-				destinations: core_xds.DestinationMap{
-					"redis": []mesh_proto.TagSelector{{"service": "redis", "version": "v1"}},
-				},
-				dataplanes: []*mesh_core.DataplaneResource{
-					{
-						Spec: mesh_proto.Dataplane{
-							Networking: &mesh_proto.Dataplane_Networking{
-								Address: "192.168.0.1",
-								Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-									{
-										Tags:        map[string]string{"service": "redis", "version": "v2"},
-										Port:        6379,
-										ServicePort: 16379,
-									},
-								},
-							},
-						},
-					},
-				},
-				expected: core_xds.EndpointMap{},
-			}),
-			Entry("dataplane with invalid inbound interface", testCase{
-				destinations: core_xds.DestinationMap{
-					"redis": []mesh_proto.TagSelector{{"service": "redis"}},
-				},
-				dataplanes: []*mesh_core.DataplaneResource{
-					{
-						Spec: mesh_proto.Dataplane{
-							Networking: &mesh_proto.Dataplane_Networking{
-								Address: "192.168.0.1",
-								Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-									{
-										Tags:        map[string]string{"service": "redis", "version": "v1"},
+										Tags:        map[string]string{mesh_proto.ServiceTag: "redis", "version": "v1"},
 										Port:        6379,
 										ServicePort: 16379,
 									},
@@ -285,51 +279,145 @@ var _ = Describe("TrafficRoute", func() {
 						},
 					},
 					{
-						Spec: mesh_proto.Dataplane{
+						Spec: &mesh_proto.Dataplane{
 							Networking: &mesh_proto.Dataplane_Networking{
+								Address: "10.20.1.2",
 								Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-									{Interface: "invalid value", Tags: map[string]string{"service": "redis", "version": "v2"}},
+									{
+										Tags: map[string]string{mesh_proto.ServiceTag: "ingress", mesh_proto.ZoneTag: "zone-2"},
+										Port: 10001,
+									},
+								},
+								Ingress: &mesh_proto.Dataplane_Networking_Ingress{
+									PublicAddress: "192.168.0.100",
+									PublicPort:    12345,
+									AvailableServices: []*mesh_proto.Dataplane_Networking_Ingress_AvailableService{
+										{
+											Instances: 2,
+											Mesh:      defaultMeshName,
+											Tags:      map[string]string{mesh_proto.ServiceTag: "redis", "version": "v2", mesh_proto.RegionTag: "eu"},
+										},
+										{
+											Instances: 3,
+											Mesh:      defaultMeshName,
+											Tags:      map[string]string{mesh_proto.ServiceTag: "redis", "version": "v3"},
+										},
+									},
 								},
 							},
 						},
 					},
 					{
-						Spec: mesh_proto.Dataplane{
+						Spec: &mesh_proto.Dataplane{
 							Networking: &mesh_proto.Dataplane_Networking{
-								Address: "192.168.0.3",
+								Address: "10.20.1.3", // another instance of the same ingress will be ignored
 								Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
 									{
-										Tags:        map[string]string{"service": "redis", "version": "v3"},
-										Port:        6379,
-										ServicePort: 36379,
+										Tags: map[string]string{mesh_proto.ServiceTag: "ingress", mesh_proto.ZoneTag: "zone-2"},
+										Port: 10001,
+									},
+								},
+								Ingress: &mesh_proto.Dataplane_Networking_Ingress{
+									PublicAddress: "192.168.0.100",
+									PublicPort:    12345,
+									AvailableServices: []*mesh_proto.Dataplane_Networking_Ingress_AvailableService{
+										{
+											Instances: 2,
+											Mesh:      defaultMeshName,
+											Tags:      map[string]string{mesh_proto.ServiceTag: "redis", "version": "v2", mesh_proto.RegionTag: "eu"},
+										},
+										{
+											Instances: 3,
+											Mesh:      defaultMeshName,
+											Tags:      map[string]string{mesh_proto.ServiceTag: "redis", "version": "v3"},
+										},
+									},
+								},
+							},
+						},
+					},
+					{
+						Spec: &mesh_proto.Dataplane{
+							Networking: &mesh_proto.Dataplane_Networking{
+								Address: "10.20.1.4",
+								Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
+									{
+										Tags: map[string]string{mesh_proto.ServiceTag: "ingress", mesh_proto.ZoneTag: "zone-2"},
+										Port: 10001,
+									},
+								},
+								Ingress: &mesh_proto.Dataplane_Networking_Ingress{
+									PublicAddress: "192.168.0.101", // instance of the ingress with different public coordinates
+									PublicPort:    12345,
+									AvailableServices: []*mesh_proto.Dataplane_Networking_Ingress_AvailableService{
+										{
+											Instances: 2,
+											Mesh:      defaultMeshName,
+											Tags:      map[string]string{mesh_proto.ServiceTag: "redis", "version": "v2", mesh_proto.RegionTag: "eu"},
+										},
+										{
+											Instances: 3,
+											Mesh:      defaultMeshName,
+											Tags:      map[string]string{mesh_proto.ServiceTag: "redis", "version": "v3"},
+										},
 									},
 								},
 							},
 						},
 					},
 				},
+				mesh: defaultMeshWithMTLS,
 				expected: core_xds.EndpointMap{
 					"redis": []core_xds.Endpoint{
-						{Target: "192.168.0.1", Port: 6379, Tags: map[string]string{"service": "redis", "version": "v1"}},
-						{Target: "192.168.0.3", Port: 6379, Tags: map[string]string{"service": "redis", "version": "v3"}},
+						{
+							Target: "192.168.0.100",
+							Port:   12345,
+							Tags:   map[string]string{mesh_proto.ServiceTag: "redis", "version": "v2", mesh_proto.RegionTag: "eu"},
+							Locality: &core_xds.Locality{
+								Region: "eu",
+							},
+							Weight: 2,
+						},
+						{
+							Target: "192.168.0.100",
+							Port:   12345,
+							Tags:   map[string]string{mesh_proto.ServiceTag: "redis", "version": "v3"},
+							Weight: 3,
+						},
+						{
+							Target: "192.168.0.101",
+							Port:   12345,
+							Tags:   map[string]string{mesh_proto.ServiceTag: "redis", "version": "v2", mesh_proto.RegionTag: "eu"},
+							Locality: &core_xds.Locality{
+								Region: "eu",
+							},
+							Weight: 2,
+						},
+						{
+							Target: "192.168.0.101",
+							Port:   12345,
+							Tags:   map[string]string{mesh_proto.ServiceTag: "redis", "version": "v3"},
+							Weight: 3,
+						},
+						{
+							Target: "192.168.0.1",
+							Port:   6379,
+							Tags:   map[string]string{mesh_proto.ServiceTag: "redis", "version": "v1"},
+							Weight: 2, // local weight is bumped to 2 to factor two instances of Ingresses
+						},
 					},
 				},
 			}),
-			Entry("destination with multiple selectors", testCase{
-				destinations: core_xds.DestinationMap{
-					"redis": []mesh_proto.TagSelector{
-						{"service": "redis", "region": "eu"},
-						{"service": "redis", "region": "us"},
-					},
-				},
+			Entry("ingresses in the list of dataplanes from different meshes", testCase{
 				dataplanes: []*mesh_core.DataplaneResource{
 					{
-						Spec: mesh_proto.Dataplane{
+						Meta: &test_model.ResourceMeta{Mesh: defaultMeshName},
+						Spec: &mesh_proto.Dataplane{
 							Networking: &mesh_proto.Dataplane_Networking{
 								Address: "192.168.0.1",
 								Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
 									{
-										Tags:        map[string]string{"service": "redis", "region": "us"},
+										Tags:        map[string]string{mesh_proto.ServiceTag: "redis", "version": "v1"},
 										Port:        6379,
 										ServicePort: 16379,
 									},
@@ -337,28 +425,67 @@ var _ = Describe("TrafficRoute", func() {
 							},
 						},
 					},
+					{
+						Spec: &mesh_proto.Dataplane{
+							Networking: &mesh_proto.Dataplane_Networking{
+								Address: "10.20.1.2",
+								Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
+									{
+										Tags: map[string]string{mesh_proto.ServiceTag: "ingress", mesh_proto.ZoneTag: "zone-2"},
+										Port: 10001,
+									},
+								},
+								Ingress: &mesh_proto.Dataplane_Networking_Ingress{
+									PublicAddress: "192.168.0.100",
+									PublicPort:    12345,
+									AvailableServices: []*mesh_proto.Dataplane_Networking_Ingress_AvailableService{
+										{
+											Instances: 2,
+											Mesh:      defaultMeshName,
+											Tags:      map[string]string{mesh_proto.ServiceTag: "redis", "version": "v2", mesh_proto.RegionTag: "eu"},
+										},
+										{
+											Instances: 3,
+											Mesh:      nonDefaultMesh,
+											Tags:      map[string]string{mesh_proto.ServiceTag: "redis", "version": "v3"},
+										},
+									},
+								},
+							},
+						},
+					},
 				},
+				mesh: defaultMeshWithMTLS,
 				expected: core_xds.EndpointMap{
 					"redis": []core_xds.Endpoint{
-						{Target: "192.168.0.1", Port: 6379, Tags: map[string]string{"service": "redis", "region": "us"}},
+						{
+							Target: "192.168.0.100",
+							Port:   12345,
+							Tags:   map[string]string{mesh_proto.ServiceTag: "redis", "version": "v2", mesh_proto.RegionTag: "eu"},
+							Locality: &core_xds.Locality{
+								Region: "eu",
+							},
+							Weight: 2,
+						},
+						{
+							Target: "192.168.0.1",
+							Port:   6379,
+							Tags:   map[string]string{mesh_proto.ServiceTag: "redis", "version": "v1"},
+							Weight: 1,
+						},
 					},
 				},
 			}),
-			Entry("destination with multiple matching selectors", testCase{
-				destinations: core_xds.DestinationMap{
-					"redis": []mesh_proto.TagSelector{
-						{"service": "redis"},
-						{"service": "redis", "region": "us"},
-					},
-				},
+			Entry("ingress is not included if mtls is off", testCase{
 				dataplanes: []*mesh_core.DataplaneResource{
 					{
-						Spec: mesh_proto.Dataplane{
+						Meta: &test_model.ResourceMeta{Mesh: defaultMeshName},
+						Spec: &mesh_proto.Dataplane{
 							Networking: &mesh_proto.Dataplane_Networking{
 								Address: "192.168.0.1",
 								Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
 									{
-										Tags:        map[string]string{"service": "redis", "region": "us"},
+										Tags:        map[string]string{mesh_proto.ServiceTag: "redis", "version": "v1"},
 										Port:        6379,
 										ServicePort: 16379,
 									},
@@ -366,32 +493,171 @@ var _ = Describe("TrafficRoute", func() {
 							},
 						},
 					},
+					{
+						Spec: &mesh_proto.Dataplane{
+							Networking: &mesh_proto.Dataplane_Networking{
+								Address: "10.20.1.2",
+								Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
+									{
+										Tags: map[string]string{mesh_proto.ServiceTag: "ingress", mesh_proto.ZoneTag: "zone-2"},
+										Port: 10001,
+									},
+								},
+								Ingress: &mesh_proto.Dataplane_Networking_Ingress{
+									AvailableServices: []*mesh_proto.Dataplane_Networking_Ingress_AvailableService{
+										{
+											Instances: 2,
+											Mesh:      defaultMeshName,
+											Tags:      map[string]string{mesh_proto.ServiceTag: "redis", "version": "v2", mesh_proto.RegionTag: "eu"},
+										},
+										{
+											Instances: 3,
+											Mesh:      nonDefaultMesh,
+											Tags:      map[string]string{mesh_proto.ServiceTag: "redis", "version": "v3"},
+										},
+									},
+								},
+							},
+						},
+					},
 				},
+				mesh: defaultMeshWithoutMTLS,
 				expected: core_xds.EndpointMap{
 					"redis": []core_xds.Endpoint{
-						{Target: "192.168.0.1", Port: 6379, Tags: map[string]string{"service": "redis", "region": "us"}},
+						{
+							Target: "192.168.0.1",
+							Port:   6379,
+							Tags:   map[string]string{mesh_proto.ServiceTag: "redis", "version": "v1"},
+							Weight: 1,
+						},
 					},
 				},
 			}),
-			Entry("multiple destinations", testCase{
-				destinations: core_xds.DestinationMap{
-					"redis": []mesh_proto.TagSelector{
-						{"service": "redis"},
-						{"service": "redis", "version": "v1"},
-					},
-					"elastic": []mesh_proto.TagSelector{
-						{"service": "elastic"},
-						{"service": "elastic", "region": "eu"},
+			Entry("external service no TLS", testCase{
+				dataplanes: []*mesh_core.DataplaneResource{},
+				externalServices: []*mesh_core.ExternalServiceResource{
+					{
+						Meta: &test_model.ResourceMeta{Mesh: defaultMeshName},
+						Spec: &mesh_proto.ExternalService{
+							Networking: &mesh_proto.ExternalService_Networking{
+								Address: "httpbin.org:80",
+								Tls:     nil,
+							},
+							Tags: map[string]string{mesh_proto.ServiceTag: "redis"},
+						},
 					},
 				},
+				mesh: defaultMeshWithMTLS,
+				expected: core_xds.EndpointMap{
+					"redis": []core_xds.Endpoint{
+						{
+							Target:          "httpbin.org",
+							Port:            80,
+							Tags:            map[string]string{mesh_proto.ServiceTag: "redis"},
+							Weight:          1,
+							ExternalService: &core_xds.ExternalService{TLSEnabled: false},
+						},
+					},
+				},
+			}),
+			Entry("external service with TLS disabled", testCase{
+				dataplanes: []*mesh_core.DataplaneResource{},
+				externalServices: []*mesh_core.ExternalServiceResource{
+					{
+						Meta: &test_model.ResourceMeta{Mesh: defaultMeshName},
+						Spec: &mesh_proto.ExternalService{
+							Networking: &mesh_proto.ExternalService_Networking{
+								Address: "httpbin.org:80",
+								Tls: &mesh_proto.ExternalService_Networking_TLS{
+									Enabled: false,
+								},
+							},
+							Tags: map[string]string{mesh_proto.ServiceTag: "redis"},
+						},
+					},
+				},
+				mesh: defaultMeshWithMTLS,
+				expected: core_xds.EndpointMap{
+					"redis": []core_xds.Endpoint{
+						{
+							Target:          "httpbin.org",
+							Port:            80,
+							Tags:            map[string]string{mesh_proto.ServiceTag: "redis"},
+							Weight:          1,
+							ExternalService: &core_xds.ExternalService{TLSEnabled: false},
+						},
+					},
+				},
+			}),
+			Entry("external service with TLS enabled", testCase{
+				dataplanes: []*mesh_core.DataplaneResource{},
+				externalServices: []*mesh_core.ExternalServiceResource{
+					{
+						Meta: &test_model.ResourceMeta{Mesh: defaultMeshName},
+						Spec: &mesh_proto.ExternalService{
+							Networking: &mesh_proto.ExternalService_Networking{
+								Address: "httpbin.org:80",
+								Tls: &mesh_proto.ExternalService_Networking_TLS{
+									Enabled: true,
+								},
+							},
+							Tags: map[string]string{mesh_proto.ServiceTag: "redis"},
+						},
+					},
+				},
+				mesh: defaultMeshWithMTLS,
+				expected: core_xds.EndpointMap{
+					"redis": []core_xds.Endpoint{
+						{
+							Target:          "httpbin.org",
+							Port:            80,
+							Tags:            map[string]string{mesh_proto.ServiceTag: "redis", mesh_proto.ExternalServiceTag: ""},
+							Weight:          1,
+							ExternalService: &core_xds.ExternalService{TLSEnabled: true},
+						},
+					},
+				},
+			}),
+			Entry("external service with TLS enabled and Locality", testCase{
+				dataplanes: []*mesh_core.DataplaneResource{},
+				externalServices: []*mesh_core.ExternalServiceResource{
+					{
+						Meta: &test_model.ResourceMeta{Mesh: defaultMeshName},
+						Spec: &mesh_proto.ExternalService{
+							Networking: &mesh_proto.ExternalService_Networking{
+								Address: "httpbin.org:80",
+								Tls: &mesh_proto.ExternalService_Networking_TLS{
+									Enabled: true,
+								},
+							},
+							Tags: map[string]string{mesh_proto.ServiceTag: "redis", mesh_proto.RegionTag: "us", mesh_proto.ZoneTag: "west"},
+						},
+					},
+				},
+				mesh: defaultMeshWithLocality,
+				expected: core_xds.EndpointMap{
+					"redis": []core_xds.Endpoint{
+						{
+							Target:          "httpbin.org",
+							Port:            80,
+							Tags:            map[string]string{mesh_proto.ServiceTag: "redis", mesh_proto.RegionTag: "us", mesh_proto.ZoneTag: "west", mesh_proto.ExternalServiceTag: ""},
+							Weight:          1,
+							Locality:        &core_xds.Locality{Region: "us", Zone: "west", Priority: 1},
+							ExternalService: &core_xds.ExternalService{TLSEnabled: true},
+						},
+					},
+				},
+			}),
+			Entry("unhealthy dataplane", testCase{
 				dataplanes: []*mesh_core.DataplaneResource{
 					{
-						Spec: mesh_proto.Dataplane{
+						Meta: &test_model.ResourceMeta{Name: "dp-1", Mesh: defaultMeshName},
+						Spec: &mesh_proto.Dataplane{
 							Networking: &mesh_proto.Dataplane_Networking{
 								Address: "192.168.0.1",
 								Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
 									{
-										Tags:        map[string]string{"service": "redis", "version": "v1"},
+										Tags:        map[string]string{mesh_proto.ServiceTag: "redis", "version": "v1"},
 										Port:        6379,
 										ServicePort: 16379,
 									},
@@ -400,68 +666,31 @@ var _ = Describe("TrafficRoute", func() {
 						},
 					},
 					{
-						Spec: mesh_proto.Dataplane{
+						Meta: &test_model.ResourceMeta{Name: "dp-2", Mesh: defaultMeshName},
+						Spec: &mesh_proto.Dataplane{
 							Networking: &mesh_proto.Dataplane_Networking{
 								Address: "192.168.0.2",
 								Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
 									{
-										Tags:        map[string]string{"service": "elastic", "region": "us"},
-										Port:        9200,
-										ServicePort: 19200,
-									},
-								},
-							},
-						},
-					},
-				},
-				expected: core_xds.EndpointMap{
-					"redis": []core_xds.Endpoint{
-						{Target: "192.168.0.1", Port: 6379, Tags: map[string]string{"service": "redis", "version": "v1"}},
-					},
-					"elastic": []core_xds.Endpoint{
-						{Target: "192.168.0.2", Port: 9200, Tags: map[string]string{"service": "elastic", "region": "us"}},
-					},
-				},
-			}),
-			Entry("multiple destinations implemented by a single dataplane", testCase{
-				destinations: core_xds.DestinationMap{
-					"redis": []mesh_proto.TagSelector{
-						{"service": "redis"},
-						{"service": "redis", "version": "v1"},
-					},
-					"elastic": []mesh_proto.TagSelector{
-						{"service": "elastic"},
-						{"service": "elastic", "region": "eu"},
-					},
-				},
-				dataplanes: []*mesh_core.DataplaneResource{
-					{
-						Spec: mesh_proto.Dataplane{
-							Networking: &mesh_proto.Dataplane_Networking{
-								Address: "192.168.0.1",
-								Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-									{
-										Tags:        map[string]string{"service": "redis", "version": "v1"},
+										Tags:        map[string]string{mesh_proto.ServiceTag: "redis", "version": "v1"},
 										Port:        6379,
 										ServicePort: 16379,
-									},
-									{
-										Tags:        map[string]string{"service": "elastic", "region": "us"},
-										Address:     "192.168.0.2",
-										Port:        9200,
-										ServicePort: 19200,
+										Health:      &mesh_proto.Dataplane_Networking_Inbound_Health{Ready: false},
 									},
 								},
 							},
 						},
 					},
 				},
+				mesh: defaultMeshWithMTLS,
 				expected: core_xds.EndpointMap{
 					"redis": []core_xds.Endpoint{
-						{Target: "192.168.0.1", Port: 6379, Tags: map[string]string{"service": "redis", "version": "v1"}},
-					},
-					"elastic": []core_xds.Endpoint{
-						{Target: "192.168.0.2", Port: 9200, Tags: map[string]string{"service": "elastic", "region": "us"}},
+						{
+							Target: "192.168.0.1",
+							Port:   6379,
+							Tags:   map[string]string{mesh_proto.ServiceTag: "redis", "version": "v1"},
+							Weight: 1, // local weight is bumped to 2 to factor two instances of Ingresses
+						},
 					},
 				},
 			}),

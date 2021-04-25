@@ -9,14 +9,15 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	kube_core "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	meshv1alpha1 "github.com/Kong/kuma/pkg/plugins/resources/k8s/native/api/v1alpha1"
-	k8scnicncfio "github.com/Kong/kuma/pkg/plugins/runtime/k8s/apis/k8s.cni.cncf.io"
+	meshv1alpha1 "github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/api/v1alpha1"
+	k8scnicncfio "github.com/kumahq/kuma/pkg/plugins/runtime/k8s/apis/k8s.cni.cncf.io"
 )
 
 var k8sClient client.Client
@@ -48,6 +49,8 @@ var _ = BeforeSuite(func(done Done) {
 	err = kube_core.AddToScheme(k8sClientScheme)
 	Expect(err).NotTo(HaveOccurred())
 	err = k8scnicncfio.AddToScheme(k8sClientScheme)
+	Expect(err).NotTo(HaveOccurred())
+	err = apiextensionsv1.AddToScheme(k8sClientScheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:scheme

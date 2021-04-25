@@ -7,8 +7,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/Kong/kuma/pkg/core/resources/model"
-	"github.com/Kong/kuma/pkg/core/resources/model/rest"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
+	"github.com/kumahq/kuma/pkg/core/resources/model/rest"
 )
 
 type remoteMeta struct {
@@ -85,10 +85,9 @@ func UnmarshalList(b []byte, rs model.ResourceList) error {
 		// we do not preserve here the size of the page, but since it is used in kumactl
 		// user will rerun command with the page size of his choice
 		if offset != "" {
-			rs.SetPagination(model.Pagination{
-				NextOffset: offset,
-			})
+			rs.GetPagination().SetNextOffset(offset)
 		}
 	}
+	rs.GetPagination().SetTotal(rsr.ResourceList.Total)
 	return nil
 }

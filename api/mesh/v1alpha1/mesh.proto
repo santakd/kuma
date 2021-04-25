@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package kuma.mesh.v1alpha1;
 
-option go_package = "v1alpha1";
+option go_package = "github.com/kumahq/kuma/api/mesh/v1alpha1";
 
 import "mesh/v1alpha1/metrics.proto";
 import "google/protobuf/wrappers.proto";
@@ -40,6 +40,12 @@ message Mesh {
   // for each dataplane individually using Dataplane resource.
   // +optional
   Metrics metrics = 4;
+
+  // Networking settings of the mesh
+  Networking networking = 5;
+
+  // Routing settings of the mesh
+  Routing routing = 6;
 }
 
 // CertificateAuthorityBackend defines Certificate Authority backend
@@ -52,8 +58,35 @@ message CertificateAuthorityBackend {
   // builtin and provided)
   string type = 2;
 
+  // DpCert defines settings for certificates generated for Dataplanes
+  message DpCert {
+    // Rotation defines rotation settings for Dataplane certificate
+    message Rotation {
+      // Time after which generated certificate for Dataplane will expire
+      string expiration = 1;
+    }
+    // Rotation settings
+    Rotation rotation = 1;
+  }
+
+  // Dataplane certificate settings
+  DpCert dpCert = 3;
+
   // Configuration of the backend
-  google.protobuf.Struct config = 3;
+  google.protobuf.Struct conf = 4;
+}
+
+// Networking defines the networking configuration of the mesh
+message Networking {
+
+  // Outbound describes the common mesh outbound settings
+  message Outbound {
+    // Control the passthrough cluster
+    google.protobuf.BoolValue passthrough = 1;
+  }
+
+  // Outbound settings
+  Outbound outbound = 1;
 }
 
 // Tracing defines tracing configuration of the mesh.
@@ -81,7 +114,7 @@ message TracingBackend {
   string type = 3;
 
   // Configuration of the backend
-  google.protobuf.Struct config = 4;
+  google.protobuf.Struct conf = 4;
 }
 
 message ZipkinTracingBackendConfig {
@@ -95,6 +128,11 @@ message ZipkinTracingBackendConfig {
   // httpJson see
   // https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/trace/v3/trace.proto#envoy-v3-api-enum-config-trace-v3-zipkinconfig-collectorendpointversion
   string apiVersion = 3;
+
+  // Determines whether client and server spans will share the same span
+  // context. Default: true.
+  // https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/trace/v3/zipkin.proto#config-trace-v3-zipkinconfig
+  google.protobuf.BoolValue sharedSpanContext = 4;
 }
 
 message Logging {
@@ -121,7 +159,7 @@ message LoggingBackend {
   string type = 3;
 
   // Configuration of the backend
-  google.protobuf.Struct config = 4;
+  google.protobuf.Struct conf = 4;
 }
 
 // FileLoggingBackendConfig defines configuration for file based access logs
@@ -134,4 +172,10 @@ message FileLoggingBackendConfig {
 message TcpLoggingBackendConfig {
   // Address to TCP service that will receive logs
   string address = 1;
+}
+
+// Routing defines configuration for the routing in the mesh
+message Routing {
+  // Enable the Locality Aware Load Balancing
+  bool localityAwareLoadBalancing = 1;
 }

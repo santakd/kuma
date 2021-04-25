@@ -5,9 +5,9 @@ import (
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	"github.com/Kong/kuma/pkg/plugins/resources/k8s/native/pkg/model"
-	"github.com/Kong/kuma/pkg/plugins/resources/k8s/native/pkg/registry"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	"github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/pkg/model"
+	"github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/pkg/registry"
 )
 
 var _ = Describe("global TypeRegistry", func() {
@@ -49,6 +49,11 @@ var _ = Describe("global TypeRegistry", func() {
 				expectedType: &DataplaneInsight{},
 				expectedKind: "DataplaneInsight",
 			}),
+			Entry("ExternalService", testCase{
+				inputType:    &mesh_proto.ExternalService{},
+				expectedType: &ExternalService{},
+				expectedKind: "ExternalService",
+			}),
 			Entry("HealthCheck", testCase{
 				inputType:    &mesh_proto.HealthCheck{},
 				expectedType: &HealthCheck{},
@@ -83,6 +88,11 @@ var _ = Describe("global TypeRegistry", func() {
 				inputType:    &mesh_proto.FaultInjection{},
 				expectedType: &FaultInjection{},
 				expectedKind: "FaultInjection",
+			}),
+			Entry("Retry", testCase{
+				inputType:    &mesh_proto.Retry{},
+				expectedType: &Retry{},
+				expectedKind: "Retry",
 			}),
 		)
 	})
@@ -121,6 +131,11 @@ var _ = Describe("global TypeRegistry", func() {
 				expectedType: &DataplaneInsightList{},
 				expectedKind: "DataplaneInsightList",
 			}),
+			Entry("ExternalServiceList", testCase{
+				inputType:    &mesh_proto.ExternalService{},
+				expectedType: &ExternalServiceList{},
+				expectedKind: "ExternalServiceList",
+			}),
 			Entry("HealthCheckList", testCase{
 				inputType:    &mesh_proto.HealthCheck{},
 				expectedType: &HealthCheckList{},
@@ -150,6 +165,11 @@ var _ = Describe("global TypeRegistry", func() {
 				inputType:    &mesh_proto.TrafficTrace{},
 				expectedType: &TrafficTraceList{},
 				expectedKind: "TrafficTraceList",
+			}),
+			Entry("RetryList", testCase{
+				inputType:    &mesh_proto.Retry{},
+				expectedType: &RetryList{},
+				expectedKind: "RetryList",
 			}),
 		)
 	})

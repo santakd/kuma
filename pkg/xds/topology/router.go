@@ -4,13 +4,13 @@ import (
 	"context"
 	"time"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	"github.com/Kong/kuma/pkg/core/policy"
-	mesh_core "github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	core_manager "github.com/Kong/kuma/pkg/core/resources/manager"
-	core_model "github.com/Kong/kuma/pkg/core/resources/model"
-	core_store "github.com/Kong/kuma/pkg/core/resources/store"
-	core_xds "github.com/Kong/kuma/pkg/core/xds"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	"github.com/kumahq/kuma/pkg/core/policy"
+	mesh_core "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	core_manager "github.com/kumahq/kuma/pkg/core/resources/manager"
+	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
+	core_store "github.com/kumahq/kuma/pkg/core/resources/store"
+	core_xds "github.com/kumahq/kuma/pkg/core/xds"
 )
 
 type pseudoMeta struct {
@@ -58,25 +58,28 @@ func BuildRouteMap(dataplane *mesh_core.DataplaneResource, routes []*mesh_core.T
 
 	routeMap := core_xds.RouteMap{}
 	for _, oface := range dataplane.Spec.Networking.GetOutbound() {
-		policy, exists := policyMap[oface.Service]
+		serviceName := oface.GetTagsIncludingLegacy()[mesh_proto.ServiceTag]
+		policy, exists := policyMap[serviceName]
+
+		outbound := dataplane.Spec.Networking.ToOutboundInterface(oface)
 		if exists {
-			routeMap[oface.Service] = policy.(*mesh_core.TrafficRouteResource)
-		} else {
-			routeMap[oface.Service] = &mesh_core.TrafficRouteResource{
-				Meta: &pseudoMeta{
-					Name: "(implicit default route)",
-				},
-				Spec: mesh_proto.TrafficRoute{
-					Sources: []*mesh_proto.Selector{{
-						Match: mesh_proto.MatchAnyService(),
-					}},
-					Destinations: []*mesh_proto.Selector{{
-						Match: mesh_proto.MatchService(oface.Service),
-					}},
-					Conf: []*mesh_proto.TrafficRoute_WeightedDestination{{
-						Weight:      100,
-						Destination: mesh_proto.MatchService(oface.Service),
-					}},
+			route := policy.(*mesh_core.TrafficRouteResource)
+			split := []*mesh_proto.TrafficRoute_Split{}
+			for _, destination := range route.Spec.GetConf().GetSplit() {
+				split = append(split, &mesh_proto.TrafficRoute_Split{
+					Weight:      destination.Weight,
+					Destination: handleWildcardTagsFor(oface.GetTagsIncludingLegacy(), destination.Destination),
+				})
+			}
+
+			routeMap[outbound] = &mesh_core.TrafficRouteResource{
+				Meta: route.GetMeta(),
+				Spec: &mesh_proto.TrafficRoute{
+					Sources:      route.Spec.GetSources(),
+					Destinations: route.Spec.GetDestinations(),
+					Conf: &mesh_proto.TrafficRoute_Conf{
+						Split: split,
+					},
 				},
 			}
 		}
@@ -84,14 +87,34 @@ func BuildRouteMap(dataplane *mesh_core.DataplaneResource, routes []*mesh_core.T
 	return routeMap
 }
 
+func handleWildcardTagsFor(outboundTags, routeTags map[string]string) map[string]string {
+	resultingTags := map[string]string{}
+
+	for k, v := range routeTags {
+		if v != mesh_proto.MatchAllTag {
+			resultingTags[k] = v
+		}
+	}
+
+	for k, v := range outboundTags {
+		if _, found := resultingTags[k]; !found {
+			resultingTags[k] = v
+		}
+	}
+
+	return resultingTags
+}
+
 // BuildDestinationMap creates a map of selectors to match other dataplanes reachable from a given one
 // via given routes.
 func BuildDestinationMap(dataplane *mesh_core.DataplaneResource, routes core_xds.RouteMap) core_xds.DestinationMap {
 	destinations := core_xds.DestinationMap{}
 	for _, oface := range dataplane.Spec.Networking.GetOutbound() {
-		route, ok := routes[oface.Service]
+		serviceName := oface.GetTagsIncludingLegacy()[mesh_proto.ServiceTag]
+		outbound := dataplane.Spec.Networking.ToOutboundInterface(oface)
+		route, ok := routes[outbound]
 		if ok {
-			for _, destination := range route.Spec.Conf {
+			for _, destination := range route.Spec.GetConf().GetSplit() {
 				service, ok := destination.Destination[mesh_proto.ServiceTag]
 				if !ok {
 					// ignore destinations without a `service` tag
@@ -101,7 +124,7 @@ func BuildDestinationMap(dataplane *mesh_core.DataplaneResource, routes core_xds
 				destinations[service] = destinations[service].Add(mesh_proto.MatchTags(destination.Destination))
 			}
 		} else {
-			destinations[oface.Service] = destinations[oface.Service].Add(mesh_proto.MatchService(oface.Service))
+			destinations[serviceName] = destinations[serviceName].Add(mesh_proto.MatchService(serviceName))
 		}
 	}
 	return destinations

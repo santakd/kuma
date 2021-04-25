@@ -10,6 +10,9 @@ import (
 
 const (
 	DefaultMesh = "default"
+	// NoMesh defines a marker that resource is not bound to a Mesh.
+	// Resources not bound to a mesh (ScopeGlobal) should have an empty string in Mesh field.
+	NoMesh = ""
 )
 
 var (
@@ -23,6 +26,13 @@ type ResourceKey struct {
 	Name string
 }
 
+type ResourceScope string
+
+const (
+	ScopeMesh   = "Mesh"
+	ScopeGlobal = "Global"
+)
+
 type Resource interface {
 	GetType() ResourceType
 	GetMeta() ResourceMeta
@@ -30,7 +40,21 @@ type Resource interface {
 	GetSpec() ResourceSpec
 	SetSpec(ResourceSpec) error
 	Validate() error
+	Scope() ResourceScope
 }
+
+type ByMeta []Resource
+
+func (a ByMeta) Len() int { return len(a) }
+
+func (a ByMeta) Less(i, j int) bool {
+	if a[i].GetMeta().GetMesh() == a[j].GetMeta().GetMesh() {
+		return a[i].GetMeta().GetName() < a[j].GetMeta().GetName()
+	}
+	return a[i].GetMeta().GetMesh() < a[j].GetMeta().GetMesh()
+}
+
+func (a ByMeta) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 
 type ResourceType string
 
@@ -84,12 +108,28 @@ type ResourceList interface {
 	GetItems() []Resource
 	NewItem() Resource
 	AddItem(Resource) error
-	GetPagination() Pagination
-	SetPagination(Pagination)
+	GetPagination() *Pagination
 }
 
 type Pagination struct {
+	Total      uint32
 	NextOffset string
+}
+
+func (p *Pagination) GetTotal() uint32 {
+	return p.Total
+}
+
+func (p *Pagination) SetTotal(total uint32) {
+	p.Total = total
+}
+
+func (p *Pagination) GetNextOffset() string {
+	return p.NextOffset
+}
+
+func (p *Pagination) SetNextOffset(nextOffset string) {
+	p.NextOffset = nextOffset
 }
 
 func ErrorInvalidItemType(expected, actual interface{}) error {

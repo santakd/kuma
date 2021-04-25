@@ -8,16 +8,17 @@ import (
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	. "github.com/Kong/kuma/pkg/xds/topology"
+	. "github.com/kumahq/kuma/pkg/test/matchers"
+	. "github.com/kumahq/kuma/pkg/xds/topology"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	mesh_core "github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	core_manager "github.com/Kong/kuma/pkg/core/resources/manager"
-	core_model "github.com/Kong/kuma/pkg/core/resources/model"
-	core_store "github.com/Kong/kuma/pkg/core/resources/store"
-	core_xds "github.com/Kong/kuma/pkg/core/xds"
-	memory_resources "github.com/Kong/kuma/pkg/plugins/resources/memory"
-	test_model "github.com/Kong/kuma/pkg/test/resources/model"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	mesh_core "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	core_manager "github.com/kumahq/kuma/pkg/core/resources/manager"
+	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
+	core_store "github.com/kumahq/kuma/pkg/core/resources/store"
+	core_xds "github.com/kumahq/kuma/pkg/core/xds"
+	memory_resources "github.com/kumahq/kuma/pkg/plugins/resources/memory"
+	test_model "github.com/kumahq/kuma/pkg/test/resources/model"
 )
 
 var _ = Describe("TrafficRoute", func() {
@@ -36,32 +37,32 @@ var _ = Describe("TrafficRoute", func() {
 			// given
 			mesh := &mesh_core.MeshResource{ // mesh that is relevant to this test case
 				Meta: &test_model.ResourceMeta{
-					Mesh: "demo",
 					Name: "demo",
 				},
+				Spec: &mesh_proto.Mesh{},
 			}
 			otherMesh := &mesh_core.MeshResource{ // mesh that is irrelevant to this test case
 				Meta: &test_model.ResourceMeta{
-					Mesh: "default",
 					Name: "default",
 				},
+				Spec: &mesh_proto.Mesh{},
 			}
 			backend := &mesh_core.DataplaneResource{ // dataplane that is a source of traffic
 				Meta: &test_model.ResourceMeta{
 					Mesh: "demo",
 					Name: "backend",
 				},
-				Spec: mesh_proto.Dataplane{
+				Spec: &mesh_proto.Dataplane{
 					Networking: &mesh_proto.Dataplane_Networking{
 						Address: "192.168.0.1",
 						Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
 							{
-								Tags:        map[string]string{"service": "backend", "region": "eu"},
+								Tags:        map[string]string{"kuma.io/service": "backend", "region": "eu"},
 								Port:        8080,
 								ServicePort: 18080,
 							},
 							{
-								Tags:        map[string]string{"service": "frontend", "region": "eu"},
+								Tags:        map[string]string{"kuma.io/service": "frontend", "region": "eu"},
 								Port:        7070,
 								ServicePort: 17070,
 							},
@@ -78,17 +79,25 @@ var _ = Describe("TrafficRoute", func() {
 					Mesh: "demo",
 					Name: "route-to-redis",
 				},
-				Spec: mesh_proto.TrafficRoute{
+				Spec: &mesh_proto.TrafficRoute{
 					Sources: []*mesh_proto.Selector{
-						{Match: mesh_proto.TagSelector{"service": "frontend"}},
-						{Match: mesh_proto.TagSelector{"service": "backend"}},
+						{Match: mesh_proto.TagSelector{"kuma.io/service": "frontend"}},
+						{Match: mesh_proto.TagSelector{"kuma.io/service": "backend"}},
 					},
 					Destinations: []*mesh_proto.Selector{
-						{Match: mesh_proto.TagSelector{"service": "redis"}},
+						{Match: mesh_proto.TagSelector{"kuma.io/service": "redis"}},
 					},
-					Conf: []*mesh_proto.TrafficRoute_WeightedDestination{
-						{Weight: 10, Destination: mesh_proto.TagSelector{"service": "redis", "version": "v1"}},
-						{Weight: 90, Destination: mesh_proto.TagSelector{"service": "redis", "version": "v2"}},
+					Conf: &mesh_proto.TrafficRoute_Conf{
+						Split: []*mesh_proto.TrafficRoute_Split{
+							{
+								Weight:      10,
+								Destination: mesh_proto.TagSelector{"kuma.io/service": "redis", "version": "v1"},
+							},
+							{
+								Weight:      90,
+								Destination: mesh_proto.TagSelector{"kuma.io/service": "redis", "version": "v2"},
+							},
+						},
 					},
 				},
 			}
@@ -97,16 +106,24 @@ var _ = Describe("TrafficRoute", func() {
 					Mesh: "demo",
 					Name: "route-to-elastic",
 				},
-				Spec: mesh_proto.TrafficRoute{
+				Spec: &mesh_proto.TrafficRoute{
 					Sources: []*mesh_proto.Selector{
-						{Match: mesh_proto.TagSelector{"service": "*"}},
+						{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 					},
 					Destinations: []*mesh_proto.Selector{
-						{Match: mesh_proto.TagSelector{"service": "elastic"}},
+						{Match: mesh_proto.TagSelector{"kuma.io/service": "elastic"}},
 					},
-					Conf: []*mesh_proto.TrafficRoute_WeightedDestination{
-						{Weight: 30, Destination: mesh_proto.TagSelector{"service": "elastic", "region": "us"}},
-						{Weight: 70, Destination: mesh_proto.TagSelector{"service": "elastic", "region": "eu"}},
+					Conf: &mesh_proto.TrafficRoute_Conf{
+						Split: []*mesh_proto.TrafficRoute_Split{
+							{
+								Weight:      30,
+								Destination: mesh_proto.TagSelector{"kuma.io/service": "elastic", "region": "us"},
+							},
+							{
+								Weight:      70,
+								Destination: mesh_proto.TagSelector{"kuma.io/service": "elastic", "region": "eu"},
+							},
+						},
 					},
 				},
 			}
@@ -115,15 +132,20 @@ var _ = Describe("TrafficRoute", func() {
 					Mesh: "default", // other mesh
 					Name: "route-to-blackhole",
 				},
-				Spec: mesh_proto.TrafficRoute{
+				Spec: &mesh_proto.TrafficRoute{
 					Sources: []*mesh_proto.Selector{
-						{Match: mesh_proto.TagSelector{"service": "*"}},
+						{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 					},
 					Destinations: []*mesh_proto.Selector{
-						{Match: mesh_proto.TagSelector{"service": "*"}},
+						{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 					},
-					Conf: []*mesh_proto.TrafficRoute_WeightedDestination{
-						{Weight: 100, Destination: mesh_proto.TagSelector{"service": "blackhole"}},
+					Conf: &mesh_proto.TrafficRoute_Conf{
+						Split: []*mesh_proto.TrafficRoute_Split{
+							{
+								Weight:      100,
+								Destination: mesh_proto.TagSelector{"kuma.io/service": "blackhole"},
+							},
+						},
 					},
 				},
 			}
@@ -142,13 +164,15 @@ var _ = Describe("TrafficRoute", func() {
 			// and
 			Expect(routes).To(HaveLen(2))
 			// and
-			Expect(routes).To(HaveKey("redis"))
-			Expect(routes["redis"].Meta.GetName()).To(Equal(routeRedis.Meta.GetName()))
-			Expect(routes["redis"].Spec).To(Equal(routeRedis.Spec))
+			out1 := mesh_proto.OutboundInterface{DataplaneIP: "127.0.0.1", DataplanePort: 10001}
+			Expect(routes).To(HaveKey(out1))
+			Expect(routes[out1].Meta.GetName()).To(Equal(routeRedis.Meta.GetName()))
+			Expect(routes[out1].Spec).To(MatchProto(routeRedis.Spec))
 			// and
-			Expect(routes).To(HaveKey("elastic"))
-			Expect(routes["elastic"].Meta.GetName()).To(Equal(routeElastic.Meta.GetName()))
-			Expect(routes["elastic"].Spec).To(Equal(routeElastic.Spec))
+			out2 := mesh_proto.OutboundInterface{DataplaneIP: "127.0.0.1", DataplanePort: 10002}
+			Expect(routes).To(HaveKey(out2))
+			Expect(routes[out2].Meta.GetName()).To(Equal(routeElastic.Meta.GetName()))
+			Expect(routes[out2].Spec).To(MatchProto(routeElastic.Spec))
 		})
 	})
 
@@ -184,25 +208,27 @@ var _ = Describe("TrafficRoute", func() {
 				Expect(routes).Should(Equal(expectedRoutes))
 			},
 			Entry("Dataplane without outbound interfaces and no routes", testCase{
-				dataplane: &mesh_core.DataplaneResource{},
+				dataplane: mesh_core.NewDataplaneResource(),
 				routes:    nil,
 				expected:  nil,
 			}),
 			Entry("Dataplane without outbound interfaces", testCase{
-				dataplane: &mesh_core.DataplaneResource{},
+				dataplane: mesh_core.NewDataplaneResource(),
 				routes: []*mesh_core.TrafficRouteResource{
 					{
-						Spec: mesh_proto.TrafficRoute{
+						Spec: &mesh_proto.TrafficRoute{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
-							Conf: []*mesh_proto.TrafficRoute_WeightedDestination{
-								{
-									Weight:      100,
-									Destination: mesh_proto.TagSelector{"service": "blackhole"},
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{
+									{
+										Weight:      100,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "blackhole"},
+									},
 								},
 							},
 						},
@@ -210,127 +236,18 @@ var _ = Describe("TrafficRoute", func() {
 				},
 				expected: core_xds.RouteMap{},
 			}),
-			Entry("if an outbound interface has no matching TrafficRoute, an implicit default route should be used", testCase{
-				dataplane: &mesh_core.DataplaneResource{
-					Spec: mesh_proto.Dataplane{
-						Networking: &mesh_proto.Dataplane_Networking{
-							Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-								{Tags: map[string]string{"service": "backend"}},
-							},
-							Outbound: []*mesh_proto.Dataplane_Networking_Outbound{
-								{Service: "redis"},
-								{Service: "elastic"},
-							},
-						},
-					},
-				},
-				routes: nil,
-				expected: core_xds.RouteMap{
-					"redis": &mesh_core.TrafficRouteResource{
-						Meta: &PseudoMeta{
-							Name: "(implicit default route)",
-						},
-						Spec: mesh_proto.TrafficRoute{
-							Sources: []*mesh_proto.Selector{{
-								Match: mesh_proto.TagSelector{"service": "*"},
-							}},
-							Destinations: []*mesh_proto.Selector{{
-								Match: mesh_proto.TagSelector{"service": "redis"},
-							}},
-							Conf: []*mesh_proto.TrafficRoute_WeightedDestination{{
-								Weight:      100,
-								Destination: mesh_proto.TagSelector{"service": "redis"},
-							}},
-						},
-					},
-					"elastic": &mesh_core.TrafficRouteResource{
-						Meta: &PseudoMeta{
-							Name: "(implicit default route)",
-						},
-						Spec: mesh_proto.TrafficRoute{
-							Sources: []*mesh_proto.Selector{{
-								Match: mesh_proto.TagSelector{"service": "*"},
-							}},
-							Destinations: []*mesh_proto.Selector{{
-								Match: mesh_proto.TagSelector{"service": "elastic"},
-							}},
-							Conf: []*mesh_proto.TrafficRoute_WeightedDestination{{
-								Weight:      100,
-								Destination: mesh_proto.TagSelector{"service": "elastic"},
-							}},
-						},
-					},
-				},
-			}),
-			Entry("implicit default route should only be used if there is matching TrafficRoute for a given outbound interface", testCase{
-				dataplane: &mesh_core.DataplaneResource{
-					Spec: mesh_proto.Dataplane{
-						Networking: &mesh_proto.Dataplane_Networking{
-							Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-								{Tags: map[string]string{"service": "backend"}},
-							},
-							Outbound: []*mesh_proto.Dataplane_Networking_Outbound{
-								{Service: "redis"},
-								{Service: "elastic"},
-							},
-						},
-					},
-				},
-				routes: []*mesh_core.TrafficRouteResource{
-					{
-						Meta: &test_model.ResourceMeta{
-							Name: "everything-to-elastic-v1",
-						},
-						Spec: mesh_proto.TrafficRoute{
-							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
-							},
-							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "elastic"}},
-							},
-							Conf: []*mesh_proto.TrafficRoute_WeightedDestination{
-								{
-									Weight:      200,
-									Destination: mesh_proto.TagSelector{"service": "elastic", "version": "v1"},
-								},
-							},
-						},
-					},
-				},
-				expected: core_xds.RouteMap{
-					"redis": &mesh_core.TrafficRouteResource{
-						Meta: &PseudoMeta{
-							Name: "(implicit default route)",
-						},
-						Spec: mesh_proto.TrafficRoute{
-							Sources: []*mesh_proto.Selector{{
-								Match: mesh_proto.TagSelector{"service": "*"},
-							}},
-							Destinations: []*mesh_proto.Selector{{
-								Match: mesh_proto.TagSelector{"service": "redis"},
-							}},
-							Conf: []*mesh_proto.TrafficRoute_WeightedDestination{{
-								Weight:      100,
-								Destination: mesh_proto.TagSelector{"service": "redis"},
-							}},
-						},
-					},
-					"elastic": &mesh_core.TrafficRouteResource{
-						Meta: &test_model.ResourceMeta{
-							Name: "everything-to-elastic-v1",
-						},
-					},
-				},
-			}),
 			Entry("TrafficRoutes should be picked by latest creation time given two equally specific routes", testCase{
 				dataplane: &mesh_core.DataplaneResource{
-					Spec: mesh_proto.Dataplane{
+					Spec: &mesh_proto.Dataplane{
 						Networking: &mesh_proto.Dataplane_Networking{
 							Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-								{Tags: map[string]string{"service": "backend"}},
+								{Tags: map[string]string{"kuma.io/service": "backend"}},
 							},
 							Outbound: []*mesh_proto.Dataplane_Networking_Outbound{
-								{Service: "redis"},
+								{
+									Port:    1234,
+									Service: "redis",
+								},
 							},
 						},
 					},
@@ -341,17 +258,19 @@ var _ = Describe("TrafficRoute", func() {
 							Name:         "everything-to-hollygrail",
 							CreationTime: time.Unix(1, 1),
 						},
-						Spec: mesh_proto.TrafficRoute{
+						Spec: &mesh_proto.TrafficRoute{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
-							Conf: []*mesh_proto.TrafficRoute_WeightedDestination{
-								{
-									Weight:      100,
-									Destination: mesh_proto.TagSelector{"service": "hollygrail"},
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{
+									{
+										Weight:      100,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "hollygrail"},
+									},
 								},
 							},
 						},
@@ -361,24 +280,29 @@ var _ = Describe("TrafficRoute", func() {
 							Name:         "everything-to-blackhole",
 							CreationTime: time.Unix(0, 0),
 						},
-						Spec: mesh_proto.TrafficRoute{
+						Spec: &mesh_proto.TrafficRoute{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
-							Conf: []*mesh_proto.TrafficRoute_WeightedDestination{
-								{
-									Weight:      100,
-									Destination: mesh_proto.TagSelector{"service": "blackhole"},
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{
+									{
+										Weight:      100,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "blackhole"},
+									},
 								},
 							},
 						},
 					},
 				},
 				expected: core_xds.RouteMap{
-					"redis": &mesh_core.TrafficRouteResource{
+					mesh_proto.OutboundInterface{
+						DataplaneIP:   "127.0.0.1",
+						DataplanePort: 1234,
+					}: &mesh_core.TrafficRouteResource{
 						Meta: &test_model.ResourceMeta{
 							Name: "everything-to-hollygrail",
 						},
@@ -387,13 +311,16 @@ var _ = Describe("TrafficRoute", func() {
 			}),
 			Entry("TrafficRoute with a `source` selector by 2 tags should win over a TrafficRoute with a `source` selector by 1 tag", testCase{
 				dataplane: &mesh_core.DataplaneResource{
-					Spec: mesh_proto.Dataplane{
+					Spec: &mesh_proto.Dataplane{
 						Networking: &mesh_proto.Dataplane_Networking{
 							Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-								{Tags: map[string]string{"service": "backend", "region": "eu"}},
+								{Tags: map[string]string{"kuma.io/service": "backend", "region": "eu"}},
 							},
 							Outbound: []*mesh_proto.Dataplane_Networking_Outbound{
-								{Service: "redis"},
+								{
+									Port:    1234,
+									Service: "redis",
+								},
 							},
 						},
 					},
@@ -403,17 +330,19 @@ var _ = Describe("TrafficRoute", func() {
 						Meta: &test_model.ResourceMeta{
 							Name: "less-specific",
 						},
-						Spec: mesh_proto.TrafficRoute{
+						Spec: &mesh_proto.TrafficRoute{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "backend"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "backend"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
-							Conf: []*mesh_proto.TrafficRoute_WeightedDestination{
-								{
-									Weight:      100,
-									Destination: mesh_proto.TagSelector{"service": "redis", "version": "v1"},
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{
+									{
+										Weight:      100,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "redis", "version": "v1"},
+									},
 								},
 							},
 						},
@@ -422,24 +351,29 @@ var _ = Describe("TrafficRoute", func() {
 						Meta: &test_model.ResourceMeta{
 							Name: "more-specific",
 						},
-						Spec: mesh_proto.TrafficRoute{
+						Spec: &mesh_proto.TrafficRoute{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "backend", "region": "eu"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "backend", "region": "eu"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
-							Conf: []*mesh_proto.TrafficRoute_WeightedDestination{
-								{
-									Weight:      100,
-									Destination: mesh_proto.TagSelector{"service": "redis", "version": "v2"},
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{
+									{
+										Weight:      100,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "redis", "version": "v2"},
+									},
 								},
 							},
 						},
 					},
 				},
 				expected: core_xds.RouteMap{
-					"redis": &mesh_core.TrafficRouteResource{
+					mesh_proto.OutboundInterface{
+						DataplaneIP:   "127.0.0.1",
+						DataplanePort: 1234,
+					}: &mesh_core.TrafficRouteResource{
 						Meta: &test_model.ResourceMeta{
 							Name: "more-specific",
 						},
@@ -448,13 +382,16 @@ var _ = Describe("TrafficRoute", func() {
 			}),
 			Entry("TrafficRoute with a `source` selector by an exact value should win over a TrafficRoute with a `source` selector by a wildcard value", testCase{
 				dataplane: &mesh_core.DataplaneResource{
-					Spec: mesh_proto.Dataplane{
+					Spec: &mesh_proto.Dataplane{
 						Networking: &mesh_proto.Dataplane_Networking{
 							Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-								{Tags: map[string]string{"service": "backend", "region": "eu"}},
+								{Tags: map[string]string{"kuma.io/service": "backend", "region": "eu"}},
 							},
 							Outbound: []*mesh_proto.Dataplane_Networking_Outbound{
-								{Service: "redis"},
+								{
+									Port:    1234,
+									Service: "redis",
+								},
 							},
 						},
 					},
@@ -464,17 +401,19 @@ var _ = Describe("TrafficRoute", func() {
 						Meta: &test_model.ResourceMeta{
 							Name: "less-specific",
 						},
-						Spec: mesh_proto.TrafficRoute{
+						Spec: &mesh_proto.TrafficRoute{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
-							Conf: []*mesh_proto.TrafficRoute_WeightedDestination{
-								{
-									Weight:      100,
-									Destination: mesh_proto.TagSelector{"service": "redis", "version": "v1"},
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{
+									{
+										Weight:      100,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "redis", "version": "v1"},
+									},
 								},
 							},
 						},
@@ -483,24 +422,29 @@ var _ = Describe("TrafficRoute", func() {
 						Meta: &test_model.ResourceMeta{
 							Name: "more-specific",
 						},
-						Spec: mesh_proto.TrafficRoute{
+						Spec: &mesh_proto.TrafficRoute{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "backend"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "backend"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
-							Conf: []*mesh_proto.TrafficRoute_WeightedDestination{
-								{
-									Weight:      100,
-									Destination: mesh_proto.TagSelector{"service": "redis", "version": "v2"},
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{
+									{
+										Weight:      100,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "redis", "version": "v2"},
+									},
 								},
 							},
 						},
 					},
 				},
 				expected: core_xds.RouteMap{
-					"redis": &mesh_core.TrafficRouteResource{
+					mesh_proto.OutboundInterface{
+						DataplaneIP:   "127.0.0.1",
+						DataplanePort: 1234,
+					}: &mesh_core.TrafficRouteResource{
 						Meta: &test_model.ResourceMeta{
 							Name: "more-specific",
 						},
@@ -509,13 +453,16 @@ var _ = Describe("TrafficRoute", func() {
 			}),
 			Entry("TrafficRoute with a `destination` selector by an exact value should win over a TrafficRoute with a `destination` selector by a wildcard value", testCase{
 				dataplane: &mesh_core.DataplaneResource{
-					Spec: mesh_proto.Dataplane{
+					Spec: &mesh_proto.Dataplane{
 						Networking: &mesh_proto.Dataplane_Networking{
 							Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-								{Tags: map[string]string{"service": "backend", "region": "eu"}},
+								{Tags: map[string]string{"kuma.io/service": "backend", "region": "eu"}},
 							},
 							Outbound: []*mesh_proto.Dataplane_Networking_Outbound{
-								{Service: "redis"},
+								{
+									Port:    1234,
+									Service: "redis",
+								},
 							},
 						},
 					},
@@ -525,17 +472,19 @@ var _ = Describe("TrafficRoute", func() {
 						Meta: &test_model.ResourceMeta{
 							Name: "less-specific",
 						},
-						Spec: mesh_proto.TrafficRoute{
+						Spec: &mesh_proto.TrafficRoute{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
-							Conf: []*mesh_proto.TrafficRoute_WeightedDestination{
-								{
-									Weight:      100,
-									Destination: mesh_proto.TagSelector{"service": "redis", "version": "v1"},
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{
+									{
+										Weight:      100,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "redis", "version": "v1"},
+									},
 								},
 							},
 						},
@@ -544,24 +493,29 @@ var _ = Describe("TrafficRoute", func() {
 						Meta: &test_model.ResourceMeta{
 							Name: "more-specific",
 						},
-						Spec: mesh_proto.TrafficRoute{
+						Spec: &mesh_proto.TrafficRoute{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "redis"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "redis"}},
 							},
-							Conf: []*mesh_proto.TrafficRoute_WeightedDestination{
-								{
-									Weight:      100,
-									Destination: mesh_proto.TagSelector{"service": "redis", "version": "v2"},
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{
+									{
+										Weight:      100,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "redis", "version": "v2"},
+									},
 								},
 							},
 						},
 					},
 				},
 				expected: core_xds.RouteMap{
-					"redis": &mesh_core.TrafficRouteResource{
+					mesh_proto.OutboundInterface{
+						DataplaneIP:   "127.0.0.1",
+						DataplanePort: 1234,
+					}: &mesh_core.TrafficRouteResource{
 						Meta: &test_model.ResourceMeta{
 							Name: "more-specific",
 						},
@@ -570,13 +524,16 @@ var _ = Describe("TrafficRoute", func() {
 			}),
 			Entry("in case if TrafficRoutes have equal aggregate ranks, most specific one should be selected based on last creation time", testCase{
 				dataplane: &mesh_core.DataplaneResource{
-					Spec: mesh_proto.Dataplane{
+					Spec: &mesh_proto.Dataplane{
 						Networking: &mesh_proto.Dataplane_Networking{
 							Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-								{Tags: map[string]string{"service": "backend", "region": "eu"}},
+								{Tags: map[string]string{"kuma.io/service": "backend", "region": "eu"}},
 							},
 							Outbound: []*mesh_proto.Dataplane_Networking_Outbound{
-								{Service: "redis"},
+								{
+									Port:    1234,
+									Service: "redis",
+								},
 							},
 						},
 					},
@@ -587,17 +544,19 @@ var _ = Describe("TrafficRoute", func() {
 							Name:         "equally-specific-2",
 							CreationTime: time.Unix(1, 1),
 						},
-						Spec: mesh_proto.TrafficRoute{
+						Spec: &mesh_proto.TrafficRoute{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "redis"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "redis"}},
 							},
-							Conf: []*mesh_proto.TrafficRoute_WeightedDestination{
-								{
-									Weight:      100,
-									Destination: mesh_proto.TagSelector{"service": "redis", "version": "v2"},
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{
+									{
+										Weight:      100,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "redis", "version": "v2"},
+									},
 								},
 							},
 						},
@@ -607,26 +566,250 @@ var _ = Describe("TrafficRoute", func() {
 							Name:         "equally-specific-1",
 							CreationTime: time.Unix(0, 0),
 						},
-						Spec: mesh_proto.TrafficRoute{
+						Spec: &mesh_proto.TrafficRoute{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "backend"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "backend"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
-							Conf: []*mesh_proto.TrafficRoute_WeightedDestination{
-								{
-									Weight:      100,
-									Destination: mesh_proto.TagSelector{"service": "redis", "version": "v1"},
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{
+									{
+										Weight:      100,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "redis", "version": "v1"},
+									},
 								},
 							},
 						},
 					},
 				},
 				expected: core_xds.RouteMap{
-					"redis": &mesh_core.TrafficRouteResource{
+					mesh_proto.OutboundInterface{
+						DataplaneIP:   "127.0.0.1",
+						DataplanePort: 1234,
+					}: &mesh_core.TrafficRouteResource{
 						Meta: &test_model.ResourceMeta{
 							Name: "equally-specific-2",
+						},
+					},
+				},
+			}),
+		)
+		DescribeTable("should pick the default route",
+			func(given testCase) {
+				// when
+				routes := BuildRouteMap(given.dataplane, given.routes)
+				// expect
+				Expect(routes).Should(Equal(given.expected))
+			},
+			Entry("if an outbound interface has no matching TrafficRoute, the default route should be used", testCase{
+				dataplane: &mesh_core.DataplaneResource{
+					Spec: &mesh_proto.Dataplane{
+						Networking: &mesh_proto.Dataplane_Networking{
+							Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
+								{Tags: map[string]string{"kuma.io/service": "backend"}},
+							},
+							Outbound: []*mesh_proto.Dataplane_Networking_Outbound{
+								{
+									Port:    1234,
+									Service: "redis",
+								},
+								{
+									Port:    1235,
+									Service: "elastic",
+								},
+							},
+						},
+					},
+				},
+				routes: []*mesh_core.TrafficRouteResource{
+					{
+						Meta: &PseudoMeta{
+							Name: "route-all-default",
+						},
+						Spec: &mesh_proto.TrafficRoute{
+							Sources: []*mesh_proto.Selector{{
+								Match: mesh_proto.MatchAnyService(),
+							},
+							},
+							Destinations: []*mesh_proto.Selector{{
+								Match: mesh_proto.MatchAnyService(),
+							},
+							},
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{{
+									Weight:      100,
+									Destination: mesh_proto.MatchAnyService(),
+								},
+								},
+							},
+						},
+					},
+				},
+				expected: core_xds.RouteMap{
+					mesh_proto.OutboundInterface{
+						DataplaneIP:   "127.0.0.1",
+						DataplanePort: 1234,
+					}: &mesh_core.TrafficRouteResource{
+						Meta: &PseudoMeta{
+							Name: "route-all-default",
+						},
+						Spec: &mesh_proto.TrafficRoute{
+							Sources: []*mesh_proto.Selector{{
+								Match: mesh_proto.TagSelector{"kuma.io/service": "*"},
+							}},
+							Destinations: []*mesh_proto.Selector{{
+								Match: mesh_proto.TagSelector{"kuma.io/service": "*"},
+							}},
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{
+									{
+										Weight:      100,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "redis"},
+									},
+								},
+							},
+						},
+					},
+					mesh_proto.OutboundInterface{
+						DataplaneIP:   "127.0.0.1",
+						DataplanePort: 1235,
+					}: &mesh_core.TrafficRouteResource{
+						Meta: &PseudoMeta{
+							Name: "route-all-default",
+						},
+						Spec: &mesh_proto.TrafficRoute{
+							Sources: []*mesh_proto.Selector{{
+								Match: mesh_proto.TagSelector{"kuma.io/service": "*"},
+							}},
+							Destinations: []*mesh_proto.Selector{{
+								Match: mesh_proto.TagSelector{"kuma.io/service": "*"},
+							}},
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{
+									{
+										Weight:      100,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "elastic"},
+									},
+								},
+							},
+						},
+					},
+				},
+			}),
+			Entry("the default route should only be used if there is matching TrafficRoute for a given outbound interface", testCase{
+				dataplane: &mesh_core.DataplaneResource{
+					Spec: &mesh_proto.Dataplane{
+						Networking: &mesh_proto.Dataplane_Networking{
+							Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
+								{Tags: map[string]string{"kuma.io/service": "backend"}},
+							},
+							Outbound: []*mesh_proto.Dataplane_Networking_Outbound{
+								{
+									Port:    1234,
+									Service: "redis",
+								},
+								{
+									Port:    1235,
+									Service: "elastic",
+								},
+							},
+						},
+					},
+				},
+				routes: []*mesh_core.TrafficRouteResource{
+					{
+						Meta: &PseudoMeta{
+							Name: "route-all-default",
+						},
+						Spec: &mesh_proto.TrafficRoute{
+							Sources: []*mesh_proto.Selector{{
+								Match: mesh_proto.MatchAnyService(),
+							},
+							},
+							Destinations: []*mesh_proto.Selector{{
+								Match: mesh_proto.MatchAnyService(),
+							},
+							},
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{{
+									Weight:      100,
+									Destination: mesh_proto.MatchAnyService(),
+								},
+								},
+							},
+						},
+					},
+					{
+						Meta: &test_model.ResourceMeta{
+							Name: "everything-to-elastic-v1",
+						},
+						Spec: &mesh_proto.TrafficRoute{
+							Sources: []*mesh_proto.Selector{
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
+							},
+							Destinations: []*mesh_proto.Selector{
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "elastic"}},
+							},
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{
+									{
+										Weight:      100,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "elastic", "version": "v1"},
+									},
+								},
+							},
+						},
+					},
+				},
+				expected: core_xds.RouteMap{
+					mesh_proto.OutboundInterface{
+						DataplaneIP:   "127.0.0.1",
+						DataplanePort: 1234,
+					}: &mesh_core.TrafficRouteResource{
+						Meta: &PseudoMeta{
+							Name: "route-all-default",
+						},
+						Spec: &mesh_proto.TrafficRoute{
+							Sources: []*mesh_proto.Selector{{
+								Match: mesh_proto.TagSelector{"kuma.io/service": "*"},
+							}},
+							Destinations: []*mesh_proto.Selector{{
+								Match: mesh_proto.TagSelector{"kuma.io/service": "*"},
+							}},
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{
+									{
+										Weight:      100,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "redis"},
+									},
+								},
+							},
+						},
+					},
+					mesh_proto.OutboundInterface{
+						DataplaneIP:   "127.0.0.1",
+						DataplanePort: 1235,
+					}: &mesh_core.TrafficRouteResource{
+						Meta: &test_model.ResourceMeta{
+							Name: "everything-to-elastic-v1",
+						},
+						Spec: &mesh_proto.TrafficRoute{
+							Sources: []*mesh_proto.Selector{{
+								Match: mesh_proto.TagSelector{"kuma.io/service": "*"},
+							}},
+							Destinations: []*mesh_proto.Selector{{
+								Match: mesh_proto.TagSelector{"kuma.io/service": "elastic"},
+							}},
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{
+									{
+										Weight:      100,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "elastic", "version": "v1"},
+									},
+								},
+							},
 						},
 					},
 				},
@@ -648,13 +831,13 @@ var _ = Describe("TrafficRoute", func() {
 				Expect(destinations).Should(Equal(given.expected))
 			},
 			Entry("Dataplane without outbound interfaces", testCase{
-				dataplane: &mesh_core.DataplaneResource{},
+				dataplane: mesh_core.NewDataplaneResource(),
 				routes:    nil,
 				expected:  core_xds.DestinationMap{},
 			}),
 			Entry("Dataplane with outbound interfaces but no TrafficRoutes", testCase{
 				dataplane: &mesh_core.DataplaneResource{
-					Spec: mesh_proto.Dataplane{
+					Spec: &mesh_proto.Dataplane{
 						Networking: &mesh_proto.Dataplane_Networking{
 							Outbound: []*mesh_proto.Dataplane_Networking_Outbound{
 								{Service: "redis", Port: 10001},
@@ -666,16 +849,16 @@ var _ = Describe("TrafficRoute", func() {
 				routes: nil,
 				expected: core_xds.DestinationMap{
 					"redis": []mesh_proto.TagSelector{
-						{"service": "redis"},
+						{"kuma.io/service": "redis"},
 					},
 					"elastic": []mesh_proto.TagSelector{
-						{"service": "elastic"},
+						{"kuma.io/service": "elastic"},
 					},
 				},
 			}),
 			Entry("Dataplane with outbound interfaces and TrafficRoutes", testCase{
 				dataplane: &mesh_core.DataplaneResource{
-					Spec: mesh_proto.Dataplane{
+					Spec: &mesh_proto.Dataplane{
 						Networking: &mesh_proto.Dataplane_Networking{
 							Outbound: []*mesh_proto.Dataplane_Networking_Outbound{
 								{Service: "redis", Port: 10001},
@@ -685,26 +868,36 @@ var _ = Describe("TrafficRoute", func() {
 					},
 				},
 				routes: core_xds.RouteMap{
-					"redis": &mesh_core.TrafficRouteResource{
-						Spec: mesh_proto.TrafficRoute{
-							Conf: []*mesh_proto.TrafficRoute_WeightedDestination{
-								{
-									Weight:      10,
-									Destination: mesh_proto.TagSelector{"service": "redis", "role": "master"},
-								},
-								{
-									Weight:      90,
-									Destination: mesh_proto.TagSelector{"service": "redis", "role": "replica"},
+					mesh_proto.OutboundInterface{
+						DataplaneIP:   "127.0.0.1",
+						DataplanePort: 10001,
+					}: &mesh_core.TrafficRouteResource{
+						Spec: &mesh_proto.TrafficRoute{
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{
+									{
+										Weight:      10,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "redis", "role": "master"},
+									},
+									{
+										Weight:      90,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "redis", "role": "replica"},
+									},
 								},
 							},
 						},
 					},
-					"elastic": &mesh_core.TrafficRouteResource{
-						Spec: mesh_proto.TrafficRoute{
-							Conf: []*mesh_proto.TrafficRoute_WeightedDestination{
-								{
-									Weight:      100,
-									Destination: mesh_proto.TagSelector{"service": "google"},
+					mesh_proto.OutboundInterface{
+						DataplaneIP:   "127.0.0.1",
+						DataplanePort: 10002,
+					}: &mesh_core.TrafficRouteResource{
+						Spec: &mesh_proto.TrafficRoute{
+							Conf: &mesh_proto.TrafficRoute_Conf{
+								Split: []*mesh_proto.TrafficRoute_Split{
+									{
+										Weight:      100,
+										Destination: mesh_proto.TagSelector{"kuma.io/service": "google"},
+									},
 								},
 							},
 						},
@@ -712,11 +905,11 @@ var _ = Describe("TrafficRoute", func() {
 				},
 				expected: core_xds.DestinationMap{
 					"redis": []mesh_proto.TagSelector{
-						{"service": "redis", "role": "master"},
-						{"service": "redis", "role": "replica"},
+						{"kuma.io/service": "redis", "role": "master"},
+						{"kuma.io/service": "redis", "role": "replica"},
 					},
 					"google": []mesh_proto.TagSelector{
-						{"service": "google"},
+						{"kuma.io/service": "google"},
 					},
 				},
 			}),

@@ -28,7 +28,7 @@ func (f ConfigFactoryFunc) GenerateConfig() string {
 	return f()
 }
 
-func RunSmokeTest(factory ConfigFactory) {
+func RunSmokeTest(factory ConfigFactory, workdir string) {
 	Describe("run", func() {
 		var stopCh chan struct{}
 		var errCh chan error
@@ -54,14 +54,17 @@ func RunSmokeTest(factory ConfigFactory) {
 				err := os.Remove(configFile.Name())
 				Expect(err).ToNot(HaveOccurred())
 			}
+			if workdir != "" {
+				err := os.RemoveAll(workdir)
+				Expect(err).ToNot(HaveOccurred())
+			}
 		})
 
-		It("should be possible to run `kuma-cp run`", func(done Done) {
+		It("should be possible to run `kuma-cp run with default mode`", func(done Done) {
 			// given
 			config := fmt.Sprintf(factory.GenerateConfig(), diagnosticsPort)
 			_, err := configFile.WriteString(config)
 			Expect(err).ToNot(HaveOccurred())
-
 			cmd := newRunCmdWithOpts(runCmdOpts{
 				SetupSignalHandler: func() <-chan struct{} {
 					return stopCh
@@ -108,6 +111,6 @@ func RunSmokeTest(factory ConfigFactory) {
 
 			// complete
 			close(done)
-		}, 15)
+		}, 60)
 	})
 }

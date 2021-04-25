@@ -3,9 +3,9 @@ package system
 import (
 	"errors"
 
-	system_proto "github.com/Kong/kuma/api/system/v1alpha1"
-	"github.com/Kong/kuma/pkg/core/resources/model"
-	"github.com/Kong/kuma/pkg/core/resources/registry"
+	system_proto "github.com/kumahq/kuma/api/system/v1alpha1"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
+	"github.com/kumahq/kuma/pkg/core/resources/registry"
 )
 
 const (
@@ -16,7 +16,13 @@ var _ model.Resource = &SecretResource{}
 
 type SecretResource struct {
 	Meta model.ResourceMeta
-	Spec system_proto.Secret
+	Spec *system_proto.Secret
+}
+
+func NewSecretResource() *SecretResource {
+	return &SecretResource{
+		Spec: &system_proto.Secret{},
+	}
 }
 
 func (t *SecretResource) GetType() model.ResourceType {
@@ -29,19 +35,22 @@ func (t *SecretResource) SetMeta(m model.ResourceMeta) {
 	t.Meta = m
 }
 func (t *SecretResource) GetSpec() model.ResourceSpec {
-	return &t.Spec
+	return t.Spec
 }
 func (t *SecretResource) SetSpec(spec model.ResourceSpec) error {
 	value, ok := spec.(*system_proto.Secret)
 	if !ok {
 		return errors.New("invalid type of spec")
 	} else {
-		t.Spec = *value
+		t.Spec = value
 		return nil
 	}
 }
 func (t *SecretResource) Validate() error {
 	return nil
+}
+func (t *SecretResource) Scope() model.ResourceScope {
+	return model.ScopeMesh
 }
 
 var _ model.ResourceList = &SecretResourceList{}
@@ -62,7 +71,7 @@ func (l *SecretResourceList) GetItemType() model.ResourceType {
 	return SecretType
 }
 func (l *SecretResourceList) NewItem() model.Resource {
-	return &SecretResource{}
+	return NewSecretResource()
 }
 func (l *SecretResourceList) AddItem(r model.Resource) error {
 	if trr, ok := r.(*SecretResource); ok {
@@ -72,14 +81,11 @@ func (l *SecretResourceList) AddItem(r model.Resource) error {
 		return model.ErrorInvalidItemType((*SecretResource)(nil), r)
 	}
 }
-func (l *SecretResourceList) GetPagination() model.Pagination {
-	return l.Pagination
-}
-func (l *SecretResourceList) SetPagination(pagination model.Pagination) {
-	l.Pagination = pagination
+func (l *SecretResourceList) GetPagination() *model.Pagination {
+	return &l.Pagination
 }
 
 func init() {
-	registry.RegisterType(&SecretResource{})
+	registry.RegisterType(NewSecretResource())
 	registry.RegistryListType(&SecretResourceList{})
 }

@@ -8,11 +8,11 @@ import (
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	. "github.com/Kong/kuma/pkg/cmd/version"
+	. "github.com/kumahq/kuma/pkg/cmd/version"
 
 	"github.com/spf13/cobra"
 
-	kuma_version "github.com/Kong/kuma/pkg/version"
+	kuma_version "github.com/kumahq/kuma/pkg/version"
 )
 
 var _ = Describe("version", func() {
@@ -64,12 +64,14 @@ var _ = Describe("version", func() {
 			Expect(strings.TrimSpace(buf.String())).To(Equal(strings.TrimSpace(given.expected)))
 		},
 		Entry("app version", testCase{
-			args:     []string{"version"},
-			expected: `1.2.3`,
+			args: []string{"version"},
+			expected: `Kuma: 1.2.3
+`,
 		}),
 		Entry("app version --detailed", testCase{
 			args: []string{"version", "--detailed"},
 			expected: `
+Product:    Kuma
 Version:    1.2.3
 Git Tag:    v1.2.3
 Git Commit: 91ce236824a9d875601679aa80c63783fb0e8725
@@ -79,6 +81,7 @@ Build Date: 2019-08-07T11:26:06Z
 		Entry("app version -a", testCase{
 			args: []string{"version", "-a"},
 			expected: `
+Product:    Kuma
 Version:    1.2.3
 Git Tag:    v1.2.3
 Git Commit: 91ce236824a9d875601679aa80c63783fb0e8725

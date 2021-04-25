@@ -2,35 +2,38 @@ package k8s
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"time"
 
 	"github.com/pkg/errors"
 	kube_apierrs "k8s.io/apimachinery/pkg/api/errors"
 	kube_meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kube_runtime "k8s.io/apimachinery/pkg/runtime"
 	kube_client "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	core_model "github.com/Kong/kuma/pkg/core/resources/model"
-	"github.com/Kong/kuma/pkg/core/resources/store"
-	common_k8s "github.com/Kong/kuma/pkg/plugins/common/k8s"
-	k8s_model "github.com/Kong/kuma/pkg/plugins/resources/k8s/native/pkg/model"
-	k8s_registry "github.com/Kong/kuma/pkg/plugins/resources/k8s/native/pkg/registry"
-	util_k8s "github.com/Kong/kuma/pkg/util/k8s"
-	util_proto "github.com/Kong/kuma/pkg/util/proto"
+	"github.com/kumahq/kuma/pkg/core/resources/registry"
+
+	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
+	"github.com/kumahq/kuma/pkg/core/resources/store"
+	k8s_common "github.com/kumahq/kuma/pkg/plugins/common/k8s"
+	k8s_model "github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/pkg/model"
+	k8s_registry "github.com/kumahq/kuma/pkg/plugins/resources/k8s/native/pkg/registry"
+	util_k8s "github.com/kumahq/kuma/pkg/util/k8s"
 )
 
 var _ store.ResourceStore = &KubernetesStore{}
 
 type KubernetesStore struct {
 	Client    kube_client.Client
-	Converter Converter
+	Converter k8s_common.Converter
+	Scheme    *kube_runtime.Scheme
 }
 
-func NewStore(client kube_client.Client) (store.ResourceStore, error) {
+func NewStore(client kube_client.Client, scheme *kube_runtime.Scheme, converter k8s_common.Converter) (store.ResourceStore, error) {
 	return &KubernetesStore{
 		Client:    client,
-		Converter: DefaultConverter(),
+		Converter: converter,
+		Scheme:    scheme,
 	}, nil
 }
 
@@ -47,6 +50,21 @@ func (s *KubernetesStore) Create(ctx context.Context, r core_model.Resource, fs 
 	obj.SetMesh(opts.Mesh)
 	obj.GetObjectMeta().SetName(name)
 	obj.GetObjectMeta().SetNamespace(namespace)
+
+	if opts.Owner != nil {
+		k8sOwner, err := s.Converter.ToKubernetesObject(opts.Owner)
+		if err != nil {
+			return errors.Wrap(err, "failed to convert core model into k8s counterpart")
+		}
+		if err := controllerutil.SetOwnerReference(k8sOwner, obj, s.Scheme); err != nil {
+			return errors.Wrap(err, "failed to set owner reference for object")
+		}
+	}
+
+	if opts.Synced {
+		markAsSynced(obj)
+	}
+
 	if err := s.Client.Create(ctx, obj); err != nil {
 		if kube_apierrs.IsAlreadyExists(err) {
 			return store.ErrorResourceAlreadyExists(r.GetType(), opts.Name, opts.Mesh)
@@ -60,11 +78,27 @@ func (s *KubernetesStore) Create(ctx context.Context, r core_model.Resource, fs 
 	return nil
 }
 
+func markAsSynced(obj k8s_model.KubernetesObject) {
+	annotations := obj.GetAnnotations()
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
+	annotations[k8s_common.K8sSynced] = "true"
+	obj.SetAnnotations(annotations)
+}
+
 func (s *KubernetesStore) Update(ctx context.Context, r core_model.Resource, fs ...store.UpdateOptionsFunc) error {
+	opts := store.NewUpdateOptions(fs...)
+
 	obj, err := s.Converter.ToKubernetesObject(r)
 	if err != nil {
 		return errors.Wrapf(err, "failed to convert core model of type %s into k8s counterpart", r.GetType())
 	}
+
+	if opts.Synced {
+		markAsSynced(obj)
+	}
+
 	if err := s.Client.Update(ctx, obj); err != nil {
 		if kube_apierrs.IsConflict(err) {
 			return store.ErrorResourceConflict(r.GetType(), r.GetMeta().GetName(), r.GetMeta().GetMesh())
@@ -136,19 +170,7 @@ func (s *KubernetesStore) List(ctx context.Context, rs core_model.ResourceList, 
 	if err != nil {
 		return errors.Wrapf(err, "failed to convert core list model of type %s into k8s counterpart", rs.GetItemType())
 	}
-
-	var kubeOpts kube_client.ListOptions
-	if opts.PageSize > 0 {
-		kubeOpts = kube_client.ListOptions{
-			Limit:    int64(opts.PageSize),
-			Continue: opts.PageOffset,
-		}
-	}
-
-	if err := s.Client.List(ctx, obj, &kubeOpts); err != nil {
-		if strings.Contains(err.Error(), "invalid continue token") {
-			return store.ErrorInvalidOffset
-		}
+	if err := s.Client.List(ctx, obj); err != nil {
 		return errors.Wrap(err, "failed to list k8s resources")
 	}
 	predicate := func(r core_model.Resource) bool {
@@ -157,9 +179,19 @@ func (s *KubernetesStore) List(ctx context.Context, rs core_model.ResourceList, 
 		}
 		return true
 	}
-	if err := s.Converter.ToCoreList(obj, rs, predicate); err != nil {
+	fullList, err := registry.Global().NewList(rs.GetItemType())
+	if err != nil {
+		return err
+	}
+	if err := s.Converter.ToCoreList(obj, fullList, predicate); err != nil {
 		return errors.Wrap(err, "failed to convert k8s model into core counterpart")
 	}
+
+	for _, item := range fullList.GetItems() {
+		_ = rs.AddItem(item)
+	}
+
+	rs.GetPagination().SetTotal(uint32(len(fullList.GetItems())))
 	return nil
 }
 
@@ -189,7 +221,7 @@ func (m *KubernetesMetaAdapter) GetName() string {
 }
 
 func (m *KubernetesMetaAdapter) GetNameExtensions() core_model.ResourceNameExtensions {
-	return common_k8s.ResourceNameExtensions(m.ObjectMeta.Namespace, m.ObjectMeta.Name)
+	return k8s_common.ResourceNameExtensions(m.ObjectMeta.Namespace, m.ObjectMeta.Name)
 }
 
 func (m *KubernetesMetaAdapter) GetVersion() string {
@@ -225,72 +257,4 @@ func (f *SimpleKubeFactory) NewObject(r core_model.Resource) (k8s_model.Kubernet
 
 func (f *SimpleKubeFactory) NewList(rl core_model.ResourceList) (k8s_model.KubernetesList, error) {
 	return f.KubeTypes.NewList(rl.NewItem().GetSpec())
-}
-
-type ConverterPredicate = func(core_model.Resource) bool
-type Converter interface {
-	ToKubernetesObject(core_model.Resource) (k8s_model.KubernetesObject, error)
-	ToKubernetesList(core_model.ResourceList) (k8s_model.KubernetesList, error)
-	ToCoreResource(obj k8s_model.KubernetesObject, out core_model.Resource) error
-	ToCoreList(obj k8s_model.KubernetesList, out core_model.ResourceList, predicate ConverterPredicate) error
-}
-
-func DefaultConverter() Converter {
-	return &SimpleConverter{
-		KubeFactory: &SimpleKubeFactory{
-			KubeTypes: k8s_registry.Global(),
-		},
-	}
-}
-
-var _ Converter = &SimpleConverter{}
-
-type SimpleConverter struct {
-	KubeFactory KubeFactory
-}
-
-func (c *SimpleConverter) ToKubernetesObject(r core_model.Resource) (k8s_model.KubernetesObject, error) {
-	obj, err := c.KubeFactory.NewObject(r)
-	if err != nil {
-		return nil, err
-	}
-	spec, err := util_proto.ToMap(r.GetSpec())
-	if err != nil {
-		return nil, err
-	}
-	obj.SetSpec(spec)
-	if r.GetMeta() != nil {
-		if adapter, ok := r.GetMeta().(*KubernetesMetaAdapter); ok {
-			obj.SetMesh(adapter.Mesh)
-			obj.SetObjectMeta(&adapter.ObjectMeta)
-		} else {
-			return nil, fmt.Errorf("meta has unexpected type: %#v", r.GetMeta())
-		}
-	}
-	return obj, nil
-}
-
-func (c *SimpleConverter) ToKubernetesList(rl core_model.ResourceList) (k8s_model.KubernetesList, error) {
-	return c.KubeFactory.NewList(rl)
-}
-
-func (c *SimpleConverter) ToCoreResource(obj k8s_model.KubernetesObject, out core_model.Resource) error {
-	out.SetMeta(&KubernetesMetaAdapter{*obj.GetObjectMeta(), obj.GetMesh()})
-	return util_proto.FromMap(obj.GetSpec(), out.GetSpec())
-}
-
-func (c *SimpleConverter) ToCoreList(in k8s_model.KubernetesList, out core_model.ResourceList, predicate ConverterPredicate) error {
-	for _, o := range in.GetItems() {
-		r := out.NewItem()
-		if err := c.ToCoreResource(o, r); err != nil {
-			return err
-		}
-		if predicate(r) {
-			_ = out.AddItem(r)
-		}
-	}
-	out.SetPagination(core_model.Pagination{
-		NextOffset: in.GetContinue(),
-	})
-	return nil
 }

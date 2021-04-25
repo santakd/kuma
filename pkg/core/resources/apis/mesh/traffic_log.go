@@ -3,9 +3,9 @@ package mesh
 import (
 	"errors"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	"github.com/Kong/kuma/pkg/core/resources/model"
-	"github.com/Kong/kuma/pkg/core/resources/registry"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
+	"github.com/kumahq/kuma/pkg/core/resources/registry"
 )
 
 const (
@@ -16,7 +16,13 @@ var _ model.Resource = &TrafficLogResource{}
 
 type TrafficLogResource struct {
 	Meta model.ResourceMeta
-	Spec mesh_proto.TrafficLog
+	Spec *mesh_proto.TrafficLog
+}
+
+func NewTrafficLogResource() *TrafficLogResource {
+	return &TrafficLogResource{
+		Spec: &mesh_proto.TrafficLog{},
+	}
 }
 
 func (t *TrafficLogResource) GetType() model.ResourceType {
@@ -29,16 +35,19 @@ func (t *TrafficLogResource) SetMeta(m model.ResourceMeta) {
 	t.Meta = m
 }
 func (t *TrafficLogResource) GetSpec() model.ResourceSpec {
-	return &t.Spec
+	return t.Spec
 }
 func (t *TrafficLogResource) SetSpec(spec model.ResourceSpec) error {
 	status, ok := spec.(*mesh_proto.TrafficLog)
 	if !ok {
 		return errors.New("invalid type of spec")
 	} else {
-		t.Spec = *status
+		t.Spec = status
 		return nil
 	}
+}
+func (t *TrafficLogResource) Scope() model.ResourceScope {
+	return model.ScopeMesh
 }
 
 var _ model.ResourceList = &TrafficLogResourceList{}
@@ -59,7 +68,7 @@ func (l *TrafficLogResourceList) GetItemType() model.ResourceType {
 	return TrafficLogType
 }
 func (l *TrafficLogResourceList) NewItem() model.Resource {
-	return &TrafficLogResource{}
+	return NewTrafficLogResource()
 }
 func (l *TrafficLogResourceList) AddItem(r model.Resource) error {
 	if trr, ok := r.(*TrafficLogResource); ok {
@@ -69,15 +78,12 @@ func (l *TrafficLogResourceList) AddItem(r model.Resource) error {
 		return model.ErrorInvalidItemType((*TrafficLogResource)(nil), r)
 	}
 }
-func (l *TrafficLogResourceList) GetPagination() model.Pagination {
-	return l.Pagination
-}
-func (l *TrafficLogResourceList) SetPagination(pagination model.Pagination) {
-	l.Pagination = pagination
+func (l *TrafficLogResourceList) GetPagination() *model.Pagination {
+	return &l.Pagination
 }
 
 func init() {
-	registry.RegisterType(&TrafficLogResource{})
+	registry.RegisterType(NewTrafficLogResource())
 	registry.RegistryListType(&TrafficLogResourceList{})
 }
 

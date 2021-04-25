@@ -10,19 +10,20 @@ import (
 
 	"github.com/pkg/errors"
 
-	config_proto "github.com/Kong/kuma/pkg/config/app/kumactl/v1alpha1"
-	"github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	"github.com/Kong/kuma/pkg/core/rest/errors/types"
-	"github.com/Kong/kuma/pkg/plugins/resources/remote"
-	kuma_http "github.com/Kong/kuma/pkg/util/http"
+	kumactl_client "github.com/kumahq/kuma/app/kumactl/pkg/client"
+	config_proto "github.com/kumahq/kuma/pkg/config/app/kumactl/v1alpha1"
+	"github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	"github.com/kumahq/kuma/pkg/core/rest/errors/types"
+	"github.com/kumahq/kuma/pkg/plugins/resources/remote"
+	kuma_http "github.com/kumahq/kuma/pkg/util/http"
 )
 
 type DataplaneOverviewClient interface {
-	List(ctx context.Context, meshName string, tags map[string]string, gateway bool) (*mesh.DataplaneOverviewResourceList, error)
+	List(ctx context.Context, meshName string, tags map[string]string, gateway bool, ingress bool) (*mesh.DataplaneOverviewResourceList, error)
 }
 
 func NewDataplaneOverviewClient(coordinates *config_proto.ControlPlaneCoordinates_ApiServer) (DataplaneOverviewClient, error) {
-	client, err := apiServerClient(coordinates.Url)
+	client, err := kumactl_client.ApiServerClient(coordinates)
 	if err != nil {
 		return nil, err
 	}
@@ -35,8 +36,8 @@ type httpDataplaneOverviewClient struct {
 	Client kuma_http.Client
 }
 
-func (d *httpDataplaneOverviewClient) List(ctx context.Context, meshName string, tags map[string]string, gateway bool) (*mesh.DataplaneOverviewResourceList, error) {
-	resUrl, err := constructUrl(meshName, tags, gateway)
+func (d *httpDataplaneOverviewClient) List(ctx context.Context, meshName string, tags map[string]string, gateway bool, ingress bool) (*mesh.DataplaneOverviewResourceList, error) {
+	resUrl, err := constructUrl(meshName, tags, gateway, ingress)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not construct the url")
 	}
@@ -58,7 +59,7 @@ func (d *httpDataplaneOverviewClient) List(ctx context.Context, meshName string,
 	return &overviews, nil
 }
 
-func constructUrl(meshName string, tags map[string]string, gateway bool) (*url.URL, error) {
+func constructUrl(meshName string, tags map[string]string, gateway bool, ingress bool) (*url.URL, error) {
 	result, err := url.Parse(fmt.Sprintf("/meshes/%s/dataplanes+insights", meshName))
 	if err != nil {
 		return nil, err
@@ -66,6 +67,9 @@ func constructUrl(meshName string, tags map[string]string, gateway bool) (*url.U
 	query := result.Query()
 	if gateway {
 		query.Add("gateway", fmt.Sprintf("%t", gateway))
+	}
+	if ingress {
+		query.Add("ingress", fmt.Sprintf("%t", ingress))
 	}
 	for tag, value := range tags {
 		query.Add("tag", fmt.Sprintf("%s:%s", tag, value))

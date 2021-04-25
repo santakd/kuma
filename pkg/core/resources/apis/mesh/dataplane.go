@@ -3,9 +3,9 @@ package mesh
 import (
 	"errors"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	"github.com/Kong/kuma/pkg/core/resources/model"
-	"github.com/Kong/kuma/pkg/core/resources/registry"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
+	"github.com/kumahq/kuma/pkg/core/resources/registry"
 )
 
 const (
@@ -16,7 +16,13 @@ var _ model.Resource = &DataplaneResource{}
 
 type DataplaneResource struct {
 	Meta model.ResourceMeta
-	Spec mesh_proto.Dataplane
+	Spec *mesh_proto.Dataplane
+}
+
+func NewDataplaneResource() *DataplaneResource {
+	return &DataplaneResource{
+		Spec: &mesh_proto.Dataplane{},
+	}
 }
 
 func (t *DataplaneResource) GetType() model.ResourceType {
@@ -29,16 +35,20 @@ func (t *DataplaneResource) SetMeta(m model.ResourceMeta) {
 	t.Meta = m
 }
 func (t *DataplaneResource) GetSpec() model.ResourceSpec {
-	return &t.Spec
+	return t.Spec
 }
 func (t *DataplaneResource) SetSpec(spec model.ResourceSpec) error {
 	dataplane, ok := spec.(*mesh_proto.Dataplane)
 	if !ok {
 		return errors.New("invalid type of spec")
 	} else {
-		t.Spec = *dataplane
+		t.Spec = dataplane
 		return nil
 	}
+}
+
+func (t *DataplaneResource) Scope() model.ResourceScope {
+	return model.ScopeMesh
 }
 
 var _ model.ResourceList = &DataplaneResourceList{}
@@ -60,7 +70,7 @@ func (l *DataplaneResourceList) GetItemType() model.ResourceType {
 	return DataplaneType
 }
 func (l *DataplaneResourceList) NewItem() model.Resource {
-	return &DataplaneResource{}
+	return NewDataplaneResource()
 }
 func (l *DataplaneResourceList) AddItem(r model.Resource) error {
 	if trr, ok := r.(*DataplaneResource); ok {
@@ -70,14 +80,11 @@ func (l *DataplaneResourceList) AddItem(r model.Resource) error {
 		return model.ErrorInvalidItemType((*DataplaneResource)(nil), r)
 	}
 }
-func (l *DataplaneResourceList) GetPagination() model.Pagination {
-	return l.Pagination
-}
-func (l *DataplaneResourceList) SetPagination(pagination model.Pagination) {
-	l.Pagination = pagination
+func (l *DataplaneResourceList) GetPagination() *model.Pagination {
+	return &l.Pagination
 }
 
 func init() {
-	registry.RegisterType(&DataplaneResource{})
+	registry.RegisterType(NewDataplaneResource())
 	registry.RegistryListType(&DataplaneResourceList{})
 }

@@ -1,21 +1,10 @@
 package mesh
 
 import (
-	"reflect"
+	"github.com/golang/protobuf/ptypes/wrappers"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	"github.com/Kong/kuma/pkg/core/validators"
+	"github.com/kumahq/kuma/pkg/core/validators"
 )
-
-func (r *HealthCheckResource) HasActiveChecks() bool {
-	activeChecks := r.Spec.Conf.GetActiveChecks()
-	return activeChecks != nil && !reflect.DeepEqual(*activeChecks, mesh_proto.HealthCheck_Conf_Active{})
-}
-
-func (r *HealthCheckResource) HasPassiveChecks() bool {
-	passiveChecks := r.Spec.Conf.GetPassiveChecks()
-	return passiveChecks != nil && !reflect.DeepEqual(*passiveChecks, mesh_proto.HealthCheck_Conf_Passive{})
-}
 
 func (d *HealthCheckResource) Validate() error {
 	var err validators.ValidationError
@@ -39,24 +28,96 @@ func (d *HealthCheckResource) validateDestinations() (err validators.ValidationE
 	return ValidateSelectors(validators.RootedAt("destinations"), d.Spec.Destinations, OnlyServiceTagAllowed)
 }
 
+func (d *HealthCheckResource) validateConfHttpPath(
+	path validators.PathBuilder,
+) (err validators.ValidationError) {
+	httpConf := d.Spec.Conf.GetHttp()
+
+	if httpConf.Path == "" {
+		err.AddViolationAt(path, "has to be defined and cannot be empty")
+	}
+
+	return
+}
+
+func (d *HealthCheckResource) validateConfHttpRequestHeadersToAdd(
+	path validators.PathBuilder,
+) (err validators.ValidationError) {
+	httpConf := d.Spec.Conf.GetHttp()
+
+	for i, header := range httpConf.RequestHeadersToAdd {
+		path := path.Index(i).Field("header")
+
+		if header.Header == nil {
+			err.AddViolationAt(path, "has to be defined")
+			continue
+		}
+
+		if header.Header.Key == "" {
+			err.AddViolationAt(path.Field("key"), "cannot be empty")
+		}
+	}
+
+	return
+}
+
+func (d *HealthCheckResource) validateConfHttpExpectedStatuses(
+	path validators.PathBuilder,
+) (err validators.ValidationError) {
+	httpConf := d.Spec.Conf.GetHttp()
+
+	if httpConf.ExpectedStatuses != nil {
+		for i, status := range httpConf.ExpectedStatuses {
+			if status.Value < 100 || status.Value >= 600 {
+				err.AddViolationAt(
+					path.Index(i),
+					"must be in range [100, 600)",
+				)
+			}
+		}
+	}
+
+	return
+}
+
+func (d *HealthCheckResource) validateConfHttp(
+	path validators.PathBuilder,
+) (err validators.ValidationError) {
+	err.Add(d.validateConfHttpPath(path.Field("path")))
+	err.Add(d.validateConfHttpExpectedStatuses(path.Field("expectedStatuses")))
+	err.Add(d.validateConfHttpRequestHeadersToAdd(path.Field("requestHeadersToAdd")))
+	return
+}
+
 func (d *HealthCheckResource) validateConf() (err validators.ValidationError) {
-	root := validators.RootedAt("conf")
-	if !d.HasActiveChecks() && !d.HasPassiveChecks() {
-		err.AddViolationAt(root, "must have either active or passive checks configured")
+	path := validators.RootedAt("conf")
+	if d.Spec.GetConf() == nil {
+		err.AddViolationAt(path, "has to be defined")
+		return
 	}
-	if d.HasActiveChecks() {
-		path := root.Field("activeChecks")
-		activeChecks := d.Spec.Conf.GetActiveChecks()
-		err.Add(ValidateDuration(path.Field("interval"), activeChecks.Interval))
-		err.Add(ValidateDuration(path.Field("timeout"), activeChecks.Timeout))
-		err.Add(ValidateThreshold(path.Field("unhealthyThreshold"), activeChecks.UnhealthyThreshold))
-		err.Add(ValidateThreshold(path.Field("healthyThreshold"), activeChecks.HealthyThreshold))
+	err.Add(ValidateDuration(path.Field("interval"), d.Spec.Conf.Interval))
+	err.Add(ValidateDuration(path.Field("timeout"), d.Spec.Conf.Timeout))
+	err.Add(ValidateThreshold(path.Field("unhealthyThreshold"), d.Spec.Conf.UnhealthyThreshold))
+	err.Add(ValidateThreshold(path.Field("healthyThreshold"), d.Spec.Conf.HealthyThreshold))
+	if d.Spec.Conf.InitialJitter != nil {
+		err.Add(ValidateDuration(path.Field("initialJitter"), d.Spec.Conf.InitialJitter))
 	}
-	if d.HasPassiveChecks() {
-		path := root.Field("passiveChecks")
-		passiveChecks := d.Spec.Conf.GetPassiveChecks()
-		err.Add(ValidateThreshold(path.Field("unhealthyThreshold"), passiveChecks.UnhealthyThreshold))
-		err.Add(ValidateDuration(path.Field("penaltyInterval"), passiveChecks.PenaltyInterval))
+	if d.Spec.Conf.IntervalJitter != nil {
+		err.Add(ValidateDuration(path.Field("intervalJitter"), d.Spec.Conf.IntervalJitter))
+	}
+	if d.Spec.Conf.NoTrafficInterval != nil {
+		err.Add(ValidateDuration(path.Field("noTrafficInterval"), d.Spec.Conf.NoTrafficInterval))
+	}
+	err.Add(d.validatePercentage(path.Field("healthyPanicThreshold"), d.Spec.Conf.HealthyPanicThreshold))
+	if d.Spec.Conf.GetHttp() != nil {
+		err.Add(d.validateConfHttp(path.Field("http")))
+	}
+	return
+}
+
+func (d *HealthCheckResource) validatePercentage(path validators.PathBuilder, value *wrappers.FloatValue) (err validators.ValidationError) {
+	if value.GetValue() < 0.0 || value.GetValue() > 100.0 {
+		err.AddViolationAt(path, "must be in range [0.0 - 100.0]")
 	}
 	return
 }

@@ -9,14 +9,16 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	api_server "github.com/Kong/kuma/pkg/api-server"
-	config "github.com/Kong/kuma/pkg/config/api-server"
-	"github.com/Kong/kuma/pkg/core"
-	mesh_core "github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	"github.com/Kong/kuma/pkg/core/resources/model/rest"
-	"github.com/Kong/kuma/pkg/core/resources/store"
-	"github.com/Kong/kuma/pkg/plugins/resources/memory"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	api_server "github.com/kumahq/kuma/pkg/api-server"
+	config "github.com/kumahq/kuma/pkg/config/api-server"
+	"github.com/kumahq/kuma/pkg/core"
+	mesh_core "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
+	"github.com/kumahq/kuma/pkg/core/resources/model/rest"
+	"github.com/kumahq/kuma/pkg/core/resources/store"
+	"github.com/kumahq/kuma/pkg/metrics"
+	"github.com/kumahq/kuma/pkg/plugins/resources/memory"
 )
 
 var _ = Describe("FaultInjection Endpoints", func() {
@@ -31,7 +33,9 @@ var _ = Describe("FaultInjection Endpoints", func() {
 			return now
 		}
 		resourceStore = memory.NewStore()
-		apiServer = createTestApiServer(resourceStore, config.DefaultApiServerConfig())
+		metrics, err := metrics.NewMetrics("Standalone")
+		Expect(err).ToNot(HaveOccurred())
+		apiServer = createTestApiServer(resourceStore, config.DefaultApiServerConfig(), true, metrics)
 		client = resourceApiClient{
 			apiServer.Address(),
 			"/meshes/default/fault-injections",
@@ -52,7 +56,7 @@ var _ = Describe("FaultInjection Endpoints", func() {
 
 	BeforeEach(func() {
 		// when
-		err := resourceStore.Create(context.Background(), &mesh_core.MeshResource{}, store.CreateByKey("default", "default"))
+		err := resourceStore.Create(context.Background(), mesh_core.NewMeshResource(), store.CreateByKey(model.DefaultMesh, model.NoMesh))
 		// then
 		Expect(err).ToNot(HaveOccurred())
 	})
@@ -68,11 +72,11 @@ var _ = Describe("FaultInjection Endpoints", func() {
         sources:
         - match:
             service: web
-            protocol: http
+            kuma.io/protocol: http
         destinations:
         - match:
             service: backend
-            protocol: http
+            kuma.io/protocol: http
         conf:
           abort:
             httpStatus: 500

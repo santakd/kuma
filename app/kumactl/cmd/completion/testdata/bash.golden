@@ -337,12 +337,15 @@ _kumactl_apply()
     flags_completion=()
 
     flags+=("--dry-run")
+    local_nonpersistent_flags+=("--dry-run")
     flags+=("--file=")
     two_word_flags+=("--file")
     two_word_flags+=("-f")
+    local_nonpersistent_flags+=("--file=")
     flags+=("--var=")
     two_word_flags+=("--var")
     two_word_flags+=("-v")
+    local_nonpersistent_flags+=("--var=")
     flags+=("--config-file=")
     two_word_flags+=("--config-file")
     flags+=("--log-level=")
@@ -352,6 +355,8 @@ _kumactl_apply()
     two_word_flags+=("-m")
 
     must_have_one_flag=()
+    must_have_one_flag+=("--file=")
+    must_have_one_flag+=("-f")
     must_have_one_noun=()
     noun_aliases=()
 }
@@ -487,17 +492,22 @@ _kumactl_config_control-planes_add()
     flags+=("--address=")
     two_word_flags+=("--address")
     local_nonpersistent_flags+=("--address=")
-    flags+=("--admin-client-cert=")
-    two_word_flags+=("--admin-client-cert")
-    local_nonpersistent_flags+=("--admin-client-cert=")
-    flags+=("--admin-client-key=")
-    two_word_flags+=("--admin-client-key")
-    local_nonpersistent_flags+=("--admin-client-key=")
+    flags+=("--ca-cert-file=")
+    two_word_flags+=("--ca-cert-file")
+    local_nonpersistent_flags+=("--ca-cert-file=")
+    flags+=("--client-cert-file=")
+    two_word_flags+=("--client-cert-file")
+    local_nonpersistent_flags+=("--client-cert-file=")
+    flags+=("--client-key-file=")
+    two_word_flags+=("--client-key-file")
+    local_nonpersistent_flags+=("--client-key-file=")
     flags+=("--name=")
     two_word_flags+=("--name")
     local_nonpersistent_flags+=("--name=")
     flags+=("--overwrite")
     local_nonpersistent_flags+=("--overwrite")
+    flags+=("--skip-verify")
+    local_nonpersistent_flags+=("--skip-verify")
     flags+=("--config-file=")
     two_word_flags+=("--config-file")
     flags+=("--log-level=")
@@ -730,9 +740,15 @@ _kumactl_generate_dataplane-token()
     flags_with_completion=()
     flags_completion=()
 
-    flags+=("--dataplane=")
-    two_word_flags+=("--dataplane")
-    local_nonpersistent_flags+=("--dataplane=")
+    flags+=("--name=")
+    two_word_flags+=("--name")
+    local_nonpersistent_flags+=("--name=")
+    flags+=("--tag=")
+    two_word_flags+=("--tag")
+    local_nonpersistent_flags+=("--tag=")
+    flags+=("--type=")
+    two_word_flags+=("--type")
+    local_nonpersistent_flags+=("--type=")
     flags+=("--config-file=")
     two_word_flags+=("--config-file")
     flags+=("--log-level=")
@@ -742,7 +758,6 @@ _kumactl_generate_dataplane-token()
     two_word_flags+=("-m")
 
     must_have_one_flag=()
-    must_have_one_flag+=("--dataplane=")
     must_have_one_noun=()
     noun_aliases=()
 }
@@ -816,6 +831,70 @@ _kumactl_generate()
     noun_aliases=()
 }
 
+_kumactl_get_circuit-breaker()
+{
+    last_command="kumactl_get_circuit-breaker"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    two_word_flags+=("-o")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_kumactl_get_circuit-breakers()
+{
+    last_command="kumactl_get_circuit-breakers"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--offset=")
+    two_word_flags+=("--offset")
+    flags+=("--size=")
+    two_word_flags+=("--size")
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    two_word_flags+=("-o")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
 _kumactl_get_dataplane()
 {
     last_command="kumactl_get_dataplane"
@@ -849,6 +928,70 @@ _kumactl_get_dataplane()
 _kumactl_get_dataplanes()
 {
     last_command="kumactl_get_dataplanes"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--offset=")
+    two_word_flags+=("--offset")
+    flags+=("--size=")
+    two_word_flags+=("--size")
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    two_word_flags+=("-o")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_kumactl_get_external-service()
+{
+    last_command="kumactl_get_external-service"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    two_word_flags+=("-o")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_kumactl_get_external-services()
+{
+    last_command="kumactl_get_external-services"
 
     command_aliases=()
 
@@ -928,6 +1071,66 @@ _kumactl_get_fault-injections()
     two_word_flags+=("--offset")
     flags+=("--size=")
     two_word_flags+=("--size")
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    two_word_flags+=("-o")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_kumactl_get_global-secret()
+{
+    last_command="kumactl_get_global-secret"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    two_word_flags+=("-o")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_kumactl_get_global-secrets()
+{
+    last_command="kumactl_get_global-secrets"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
     flags+=("--config-file=")
     two_word_flags+=("--config-file")
     flags+=("--log-level=")
@@ -1136,6 +1339,70 @@ _kumactl_get_proxytemplates()
     noun_aliases=()
 }
 
+_kumactl_get_retries()
+{
+    last_command="kumactl_get_retries"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--offset=")
+    two_word_flags+=("--offset")
+    flags+=("--size=")
+    two_word_flags+=("--size")
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    two_word_flags+=("-o")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_kumactl_get_retry()
+{
+    last_command="kumactl_get_retry"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    two_word_flags+=("-o")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
 _kumactl_get_secret()
 {
     last_command="kumactl_get_secret"
@@ -1180,6 +1447,70 @@ _kumactl_get_secrets()
     flags_with_completion=()
     flags_completion=()
 
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    two_word_flags+=("-o")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_kumactl_get_timeout()
+{
+    last_command="kumactl_get_timeout"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    two_word_flags+=("-o")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_kumactl_get_timeouts()
+{
+    last_command="kumactl_get_timeouts"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--offset=")
+    two_word_flags+=("--offset")
+    flags+=("--size=")
+    two_word_flags+=("--size")
     flags+=("--config-file=")
     two_word_flags+=("--config-file")
     flags+=("--log-level=")
@@ -1452,6 +1783,70 @@ _kumactl_get_traffic-traces()
     noun_aliases=()
 }
 
+_kumactl_get_zone()
+{
+    last_command="kumactl_get_zone"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    two_word_flags+=("-o")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_kumactl_get_zones()
+{
+    last_command="kumactl_get_zones"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--offset=")
+    two_word_flags+=("--offset")
+    flags+=("--size=")
+    two_word_flags+=("--size")
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    two_word_flags+=("-o")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
 _kumactl_get()
 {
     last_command="kumactl_get"
@@ -1459,18 +1854,28 @@ _kumactl_get()
     command_aliases=()
 
     commands=()
+    commands+=("circuit-breaker")
+    commands+=("circuit-breakers")
     commands+=("dataplane")
     commands+=("dataplanes")
+    commands+=("external-service")
+    commands+=("external-services")
     commands+=("fault-injection")
     commands+=("fault-injections")
+    commands+=("global-secret")
+    commands+=("global-secrets")
     commands+=("healthcheck")
     commands+=("healthchecks")
     commands+=("mesh")
     commands+=("meshes")
     commands+=("proxytemplate")
     commands+=("proxytemplates")
+    commands+=("retries")
+    commands+=("retry")
     commands+=("secret")
     commands+=("secrets")
+    commands+=("timeout")
+    commands+=("timeouts")
     commands+=("traffic-log")
     commands+=("traffic-logs")
     commands+=("traffic-permission")
@@ -1479,6 +1884,8 @@ _kumactl_get()
     commands+=("traffic-routes")
     commands+=("traffic-trace")
     commands+=("traffic-traces")
+    commands+=("zone")
+    commands+=("zones")
 
     flags=()
     two_word_flags=()
@@ -1517,8 +1924,99 @@ _kumactl_inspect_dataplanes()
     flags_completion=()
 
     flags+=("--gateway")
+    flags+=("--ingress")
     flags+=("--tag=")
     two_word_flags+=("--tag")
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    two_word_flags+=("-o")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_kumactl_inspect_meshes()
+{
+    last_command="kumactl_inspect_meshes"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    two_word_flags+=("-o")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_kumactl_inspect_services()
+{
+    last_command="kumactl_inspect_services"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    two_word_flags+=("-o")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_kumactl_inspect_zones()
+{
+    last_command="kumactl_inspect_zones"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
     flags+=("--config-file=")
     two_word_flags+=("--config-file")
     flags+=("--log-level=")
@@ -1543,6 +2041,9 @@ _kumactl_inspect()
 
     commands=()
     commands+=("dataplanes")
+    commands+=("meshes")
+    commands+=("services")
+    commands+=("zones")
 
     flags=()
     two_word_flags=()
@@ -1580,50 +2081,200 @@ _kumactl_install_control-plane()
     flags_with_completion=()
     flags_completion=()
 
-    flags+=("--admission-server-tls-cert=")
-    two_word_flags+=("--admission-server-tls-cert")
-    local_nonpersistent_flags+=("--admission-server-tls-cert=")
-    flags+=("--admission-server-tls-key=")
-    two_word_flags+=("--admission-server-tls-key")
-    local_nonpersistent_flags+=("--admission-server-tls-key=")
+    flags+=("--cni-bin-dir=")
+    two_word_flags+=("--cni-bin-dir")
+    local_nonpersistent_flags+=("--cni-bin-dir=")
+    flags+=("--cni-chained")
+    local_nonpersistent_flags+=("--cni-chained")
+    flags+=("--cni-conf-name=")
+    two_word_flags+=("--cni-conf-name")
+    local_nonpersistent_flags+=("--cni-conf-name=")
     flags+=("--cni-enabled")
     local_nonpersistent_flags+=("--cni-enabled")
-    flags+=("--cni-image=")
-    two_word_flags+=("--cni-image")
-    local_nonpersistent_flags+=("--cni-image=")
+    flags+=("--cni-net-dir=")
+    two_word_flags+=("--cni-net-dir")
+    local_nonpersistent_flags+=("--cni-net-dir=")
+    flags+=("--cni-registry=")
+    two_word_flags+=("--cni-registry")
+    local_nonpersistent_flags+=("--cni-registry=")
+    flags+=("--cni-repository=")
+    two_word_flags+=("--cni-repository")
+    local_nonpersistent_flags+=("--cni-repository=")
     flags+=("--cni-version=")
     two_word_flags+=("--cni-version")
     local_nonpersistent_flags+=("--cni-version=")
-    flags+=("--control-plane-image=")
-    two_word_flags+=("--control-plane-image")
-    local_nonpersistent_flags+=("--control-plane-image=")
+    flags+=("--control-plane-registry=")
+    two_word_flags+=("--control-plane-registry")
+    local_nonpersistent_flags+=("--control-plane-registry=")
+    flags+=("--control-plane-repository=")
+    two_word_flags+=("--control-plane-repository")
+    local_nonpersistent_flags+=("--control-plane-repository=")
     flags+=("--control-plane-service-name=")
     two_word_flags+=("--control-plane-service-name")
     local_nonpersistent_flags+=("--control-plane-service-name=")
     flags+=("--control-plane-version=")
     two_word_flags+=("--control-plane-version")
     local_nonpersistent_flags+=("--control-plane-version=")
-    flags+=("--dataplane-image=")
-    two_word_flags+=("--dataplane-image")
-    local_nonpersistent_flags+=("--dataplane-image=")
-    flags+=("--dataplane-init-image=")
-    two_word_flags+=("--dataplane-init-image")
-    local_nonpersistent_flags+=("--dataplane-init-image=")
+    flags+=("--dataplane-init-registry=")
+    two_word_flags+=("--dataplane-init-registry")
+    local_nonpersistent_flags+=("--dataplane-init-registry=")
+    flags+=("--dataplane-init-repository=")
+    two_word_flags+=("--dataplane-init-repository")
+    local_nonpersistent_flags+=("--dataplane-init-repository=")
+    flags+=("--dataplane-init-version=")
+    two_word_flags+=("--dataplane-init-version")
+    local_nonpersistent_flags+=("--dataplane-init-version=")
+    flags+=("--dataplane-registry=")
+    two_word_flags+=("--dataplane-registry")
+    local_nonpersistent_flags+=("--dataplane-registry=")
+    flags+=("--dataplane-repository=")
+    two_word_flags+=("--dataplane-repository")
+    local_nonpersistent_flags+=("--dataplane-repository=")
+    flags+=("--dataplane-version=")
+    two_word_flags+=("--dataplane-version")
+    local_nonpersistent_flags+=("--dataplane-version=")
+    flags+=("--env-var=")
+    two_word_flags+=("--env-var")
+    local_nonpersistent_flags+=("--env-var=")
     flags+=("--image-pull-policy=")
     two_word_flags+=("--image-pull-policy")
     local_nonpersistent_flags+=("--image-pull-policy=")
+    flags+=("--ingress-drain-time=")
+    two_word_flags+=("--ingress-drain-time")
+    local_nonpersistent_flags+=("--ingress-drain-time=")
+    flags+=("--ingress-enabled")
+    local_nonpersistent_flags+=("--ingress-enabled")
+    flags+=("--ingress-use-node-port")
+    local_nonpersistent_flags+=("--ingress-use-node-port")
     flags+=("--injector-failure-policy=")
     two_word_flags+=("--injector-failure-policy")
     local_nonpersistent_flags+=("--injector-failure-policy=")
+    flags+=("--kds-global-address=")
+    two_word_flags+=("--kds-global-address")
+    local_nonpersistent_flags+=("--kds-global-address=")
+    flags+=("--mode=")
+    two_word_flags+=("--mode")
+    local_nonpersistent_flags+=("--mode=")
     flags+=("--namespace=")
     two_word_flags+=("--namespace")
     local_nonpersistent_flags+=("--namespace=")
-    flags+=("--sds-tls-cert=")
-    two_word_flags+=("--sds-tls-cert")
-    local_nonpersistent_flags+=("--sds-tls-cert=")
-    flags+=("--sds-tls-key=")
-    two_word_flags+=("--sds-tls-key")
-    local_nonpersistent_flags+=("--sds-tls-key=")
+    flags+=("--tls-api-server-client-certs-secret=")
+    two_word_flags+=("--tls-api-server-client-certs-secret")
+    local_nonpersistent_flags+=("--tls-api-server-client-certs-secret=")
+    flags+=("--tls-api-server-secret=")
+    two_word_flags+=("--tls-api-server-secret")
+    local_nonpersistent_flags+=("--tls-api-server-secret=")
+    flags+=("--tls-general-ca-bundle=")
+    two_word_flags+=("--tls-general-ca-bundle")
+    local_nonpersistent_flags+=("--tls-general-ca-bundle=")
+    flags+=("--tls-general-secret=")
+    two_word_flags+=("--tls-general-secret")
+    local_nonpersistent_flags+=("--tls-general-secret=")
+    flags+=("--tls-kds-global-server-secret=")
+    two_word_flags+=("--tls-kds-global-server-secret")
+    local_nonpersistent_flags+=("--tls-kds-global-server-secret=")
+    flags+=("--tls-kds-remote-client-secret=")
+    two_word_flags+=("--tls-kds-remote-client-secret")
+    local_nonpersistent_flags+=("--tls-kds-remote-client-secret=")
+    flags+=("--use-node-port")
+    local_nonpersistent_flags+=("--use-node-port")
+    flags+=("--without-kubernetes-connection")
+    local_nonpersistent_flags+=("--without-kubernetes-connection")
+    flags+=("--zone=")
+    two_word_flags+=("--zone")
+    local_nonpersistent_flags+=("--zone=")
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_kumactl_install_crds()
+{
+    last_command="kumactl_install_crds"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--only-missing")
+    local_nonpersistent_flags+=("--only-missing")
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_kumactl_install_dns()
+{
+    last_command="kumactl_install_dns"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--namespace=")
+    two_word_flags+=("--namespace")
+    local_nonpersistent_flags+=("--namespace=")
+    flags+=("--port=")
+    two_word_flags+=("--port")
+    local_nonpersistent_flags+=("--port=")
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_kumactl_install_logging()
+{
+    last_command="kumactl_install_logging"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--namespace=")
+    two_word_flags+=("--namespace")
+    local_nonpersistent_flags+=("--namespace=")
     flags+=("--config-file=")
     two_word_flags+=("--config-file")
     flags+=("--log-level=")
@@ -1663,6 +2314,10 @@ _kumactl_install_metrics()
     flags+=("--namespace=")
     two_word_flags+=("--namespace")
     local_nonpersistent_flags+=("--namespace=")
+    flags+=("--without-grafana")
+    local_nonpersistent_flags+=("--without-grafana")
+    flags+=("--without-prometheus")
+    local_nonpersistent_flags+=("--without-prometheus")
     flags+=("--config-file=")
     two_word_flags+=("--config-file")
     flags+=("--log-level=")
@@ -1706,6 +2361,79 @@ _kumactl_install_tracing()
     noun_aliases=()
 }
 
+_kumactl_install_transparent-proxy()
+{
+    last_command="kumactl_install_transparent-proxy"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--dry-run")
+    local_nonpersistent_flags+=("--dry-run")
+    flags+=("--exclude-inbound-ports=")
+    two_word_flags+=("--exclude-inbound-ports")
+    local_nonpersistent_flags+=("--exclude-inbound-ports=")
+    flags+=("--exclude-outbound-ports=")
+    two_word_flags+=("--exclude-outbound-ports")
+    local_nonpersistent_flags+=("--exclude-outbound-ports=")
+    flags+=("--kuma-cp-ip=")
+    two_word_flags+=("--kuma-cp-ip")
+    local_nonpersistent_flags+=("--kuma-cp-ip=")
+    flags+=("--kuma-dp-uid=")
+    two_word_flags+=("--kuma-dp-uid")
+    local_nonpersistent_flags+=("--kuma-dp-uid=")
+    flags+=("--kuma-dp-user=")
+    two_word_flags+=("--kuma-dp-user")
+    local_nonpersistent_flags+=("--kuma-dp-user=")
+    flags+=("--modify-iptables")
+    local_nonpersistent_flags+=("--modify-iptables")
+    flags+=("--redirect-all-dns-traffic")
+    local_nonpersistent_flags+=("--redirect-all-dns-traffic")
+    flags+=("--redirect-dns")
+    local_nonpersistent_flags+=("--redirect-dns")
+    flags+=("--redirect-dns-port=")
+    two_word_flags+=("--redirect-dns-port")
+    local_nonpersistent_flags+=("--redirect-dns-port=")
+    flags+=("--redirect-dns-upstream-target-chain=")
+    two_word_flags+=("--redirect-dns-upstream-target-chain")
+    local_nonpersistent_flags+=("--redirect-dns-upstream-target-chain=")
+    flags+=("--redirect-inbound")
+    local_nonpersistent_flags+=("--redirect-inbound")
+    flags+=("--redirect-inbound-port=")
+    two_word_flags+=("--redirect-inbound-port")
+    local_nonpersistent_flags+=("--redirect-inbound-port=")
+    flags+=("--redirect-inbound-port-v6=")
+    two_word_flags+=("--redirect-inbound-port-v6")
+    local_nonpersistent_flags+=("--redirect-inbound-port-v6=")
+    flags+=("--redirect-outbound-port=")
+    two_word_flags+=("--redirect-outbound-port")
+    local_nonpersistent_flags+=("--redirect-outbound-port=")
+    flags+=("--skip-resolv-conf")
+    local_nonpersistent_flags+=("--skip-resolv-conf")
+    flags+=("--store-firewalld")
+    local_nonpersistent_flags+=("--store-firewalld")
+    flags+=("--verbose")
+    local_nonpersistent_flags+=("--verbose")
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
 _kumactl_install()
 {
     last_command="kumactl_install"
@@ -1714,8 +2442,71 @@ _kumactl_install()
 
     commands=()
     commands+=("control-plane")
+    commands+=("crds")
+    commands+=("dns")
+    commands+=("logging")
     commands+=("metrics")
     commands+=("tracing")
+    commands+=("transparent-proxy")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_kumactl_uninstall_transparent-proxy()
+{
+    last_command="kumactl_uninstall_transparent-proxy"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--dry-run")
+    local_nonpersistent_flags+=("--dry-run")
+    flags+=("--verbose")
+    local_nonpersistent_flags+=("--verbose")
+    flags+=("--config-file=")
+    two_word_flags+=("--config-file")
+    flags+=("--log-level=")
+    two_word_flags+=("--log-level")
+    flags+=("--mesh=")
+    two_word_flags+=("--mesh")
+    two_word_flags+=("-m")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_kumactl_uninstall()
+{
+    last_command="kumactl_uninstall"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("transparent-proxy")
 
     flags=()
     two_word_flags=()
@@ -1780,6 +2571,7 @@ _kumactl_root_command()
     commands+=("get")
     commands+=("inspect")
     commands+=("install")
+    commands+=("uninstall")
     commands+=("version")
 
     flags=()

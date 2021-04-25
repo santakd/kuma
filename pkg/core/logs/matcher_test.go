@@ -6,13 +6,14 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	"github.com/Kong/kuma/pkg/core/logs"
-	core_mesh "github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	core_manager "github.com/Kong/kuma/pkg/core/resources/manager"
-	"github.com/Kong/kuma/pkg/core/resources/store"
-	"github.com/Kong/kuma/pkg/plugins/resources/memory"
-	"github.com/Kong/kuma/pkg/util/proto"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	"github.com/kumahq/kuma/pkg/core/logs"
+	core_mesh "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	core_manager "github.com/kumahq/kuma/pkg/core/resources/manager"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
+	"github.com/kumahq/kuma/pkg/core/resources/store"
+	"github.com/kumahq/kuma/pkg/plugins/resources/memory"
+	"github.com/kumahq/kuma/pkg/util/proto"
 )
 
 var _ = Describe("Matcher", func() {
@@ -33,38 +34,38 @@ var _ = Describe("Matcher", func() {
 		backendFile1 = &mesh_proto.LoggingBackend{
 			Name: "file1",
 			Type: mesh_proto.LoggingFileType,
-			Config: proto.MustToStruct(&mesh_proto.FileLoggingBackendConfig{
+			Conf: proto.MustToStruct(&mesh_proto.FileLoggingBackendConfig{
 				Path: "/tmp/access.logs",
 			}),
 		}
 		backendFile2 = &mesh_proto.LoggingBackend{
 			Name: "file2",
 			Type: mesh_proto.LoggingFileType,
-			Config: proto.MustToStruct(&mesh_proto.FileLoggingBackendConfig{
+			Conf: proto.MustToStruct(&mesh_proto.FileLoggingBackendConfig{
 				Path: "/tmp/access.logs",
 			}),
 		}
 		backendFile3 = &mesh_proto.LoggingBackend{
 			Name: "file3",
 			Type: mesh_proto.LoggingFileType,
-			Config: proto.MustToStruct(&mesh_proto.FileLoggingBackendConfig{
+			Conf: proto.MustToStruct(&mesh_proto.FileLoggingBackendConfig{
 				Path: "/tmp/access.logs",
 			}),
 		}
 		meshRes := core_mesh.MeshResource{
-			Spec: mesh_proto.Mesh{
+			Spec: &mesh_proto.Mesh{
 				Logging: &mesh_proto.Logging{
 					Backends:       []*mesh_proto.LoggingBackend{backendFile1, backendFile2, backendFile3},
 					DefaultBackend: "file1",
 				},
 			},
 		}
-		err := manager.Create(context.Background(), &meshRes, store.CreateByKey("sample", "sample"))
+		err := manager.Create(context.Background(), &meshRes, store.CreateByKey("sample", model.NoMesh))
 		Expect(err).ToNot(HaveOccurred())
 
 		// and
 		dpRes = core_mesh.DataplaneResource{
-			Spec: mesh_proto.Dataplane{
+			Spec: &mesh_proto.Dataplane{
 				Networking: &mesh_proto.Dataplane_Networking{
 					Address: "127.0.0.1",
 					Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
@@ -72,14 +73,14 @@ var _ = Describe("Matcher", func() {
 							Port:        8080,
 							ServicePort: 8081,
 							Tags: map[string]string{
-								"service": "kong",
+								"kuma.io/service": "kong",
 							},
 						},
 						{
 							Port:        8090,
 							ServicePort: 8091,
 							Tags: map[string]string{
-								"service": "kong-admin",
+								"kuma.io/service": "kong-admin",
 							},
 						},
 					},
@@ -103,18 +104,18 @@ var _ = Describe("Matcher", func() {
 	It("should match rules", func() {
 		// given
 		logRes1 := core_mesh.TrafficLogResource{
-			Spec: mesh_proto.TrafficLog{
+			Spec: &mesh_proto.TrafficLog{
 				Sources: []*mesh_proto.Selector{
 					{
 						Match: map[string]string{
-							"service": "kong",
+							"kuma.io/service": "kong",
 						},
 					},
 				},
 				Destinations: []*mesh_proto.Selector{
 					{
 						Match: map[string]string{
-							"service": "backend",
+							"kuma.io/service": "backend",
 						},
 					},
 				},
@@ -128,18 +129,18 @@ var _ = Describe("Matcher", func() {
 
 		// and
 		logRes3 := core_mesh.TrafficLogResource{
-			Spec: mesh_proto.TrafficLog{
+			Spec: &mesh_proto.TrafficLog{
 				Sources: []*mesh_proto.Selector{
 					{
 						Match: map[string]string{
-							"service": "*",
+							"kuma.io/service": "*",
 						},
 					},
 				},
 				Destinations: []*mesh_proto.Selector{
 					{
 						Match: map[string]string{
-							"service": "*",
+							"kuma.io/service": "*",
 						},
 					},
 				},
@@ -164,18 +165,18 @@ var _ = Describe("Matcher", func() {
 	It("should not match services", func() {
 		// given
 		logRes := core_mesh.TrafficLogResource{
-			Spec: mesh_proto.TrafficLog{
+			Spec: &mesh_proto.TrafficLog{
 				Sources: []*mesh_proto.Selector{
 					{
 						Match: map[string]string{
-							"service": "web",
+							"kuma.io/service": "web",
 						},
 					},
 				},
 				Destinations: []*mesh_proto.Selector{
 					{
 						Match: map[string]string{
-							"service": "backend",
+							"kuma.io/service": "backend",
 						},
 					},
 				},
@@ -198,18 +199,18 @@ var _ = Describe("Matcher", func() {
 	It("should skip unknown backends", func() {
 		// given
 		logRes := core_mesh.TrafficLogResource{
-			Spec: mesh_proto.TrafficLog{
+			Spec: &mesh_proto.TrafficLog{
 				Sources: []*mesh_proto.Selector{
 					{
 						Match: map[string]string{
-							"service": "*",
+							"kuma.io/service": "*",
 						},
 					},
 				},
 				Destinations: []*mesh_proto.Selector{
 					{
 						Match: map[string]string{
-							"service": "*",
+							"kuma.io/service": "*",
 						},
 					},
 				},

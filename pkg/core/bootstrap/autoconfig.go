@@ -3,170 +3,194 @@ package bootstrap
 import (
 	"fmt"
 	"io/ioutil"
-	"net/url"
 	"os"
-	"reflect"
+	"path"
 	"strings"
-
-	admin_server "github.com/Kong/kuma/pkg/config/admin-server"
-	"github.com/Kong/kuma/pkg/config/api-server/catalog"
-	gui_server "github.com/Kong/kuma/pkg/config/gui-server"
-	token_server "github.com/Kong/kuma/pkg/config/token-server"
 
 	"github.com/pkg/errors"
 
-	kuma_cp "github.com/Kong/kuma/pkg/config/app/kuma-cp"
-	config_core "github.com/Kong/kuma/pkg/config/core"
-	"github.com/Kong/kuma/pkg/core"
-	"github.com/Kong/kuma/pkg/tls"
+	kuma_cp "github.com/kumahq/kuma/pkg/config/app/kuma-cp"
+	config_core "github.com/kumahq/kuma/pkg/config/core"
+	dp_server "github.com/kumahq/kuma/pkg/config/dp-server"
+	"github.com/kumahq/kuma/pkg/core"
+	"github.com/kumahq/kuma/pkg/tls"
+	util_net "github.com/kumahq/kuma/pkg/util/net"
+)
+
+const (
+	crtFileName = "kuma-cp.crt"
+	keyFileName = "kuma-cp.key"
 )
 
 var autoconfigureLog = core.Log.WithName("bootstrap").WithName("auto-configure")
 
 func autoconfigure(cfg *kuma_cp.Config) error {
-	autoconfigureAdminServer(cfg)
-	autoconfigureCatalog(cfg)
-	autoconfigureGui(cfg)
+	if err := autoconfigureGeneral(cfg); err != nil {
+		return err
+	}
+	autoconfigureDpServerAuth(cfg)
+	if err := autoconfigureTLS(cfg); err != nil {
+		return errors.Wrap(err, "could not autogenerate TLS certificate")
+	}
+	autoconfigureServersTLS(cfg)
 	autoconfigBootstrapXdsParams(cfg)
-	return autoconfigureSds(cfg)
+	return nil
 }
 
-func autoconfigureCatalog(cfg *kuma_cp.Config) {
-	bootstrapUrl := cfg.ApiServer.Catalog.Bootstrap.Url
-	if len(bootstrapUrl) == 0 {
-		bootstrapUrl = fmt.Sprintf("http://%s:%d", cfg.General.AdvertisedHostname, cfg.BootstrapServer.Port)
-	}
-	madsUrl := cfg.ApiServer.Catalog.MonitoringAssignment.Url
-	if len(madsUrl) == 0 {
-		madsUrl = fmt.Sprintf("grpc://%s:%d", cfg.General.AdvertisedHostname, cfg.MonitoringAssignmentServer.GrpcPort)
-	}
-	cat := &catalog.CatalogConfig{
-		ApiServer: catalog.ApiServerConfig{
-			Url: fmt.Sprintf("http://%s:%d", cfg.General.AdvertisedHostname, cfg.ApiServer.Port),
-		},
-		Bootstrap: catalog.BootstrapApiConfig{
-			Url: bootstrapUrl,
-		},
-		Admin: catalog.AdminApiConfig{
-			LocalUrl: fmt.Sprintf("http://localhost:%d", cfg.AdminServer.Local.Port),
-		},
-		MonitoringAssignment: catalog.MonitoringAssignmentApiConfig{
-			Url: madsUrl,
-		},
-		Sds: catalog.SdsApiConfig{
-			Url: cfg.ApiServer.Catalog.Sds.Url,
-		},
-	}
-	if cfg.AdminServer.Public.Enabled {
-		cat.Admin.PublicUrl = fmt.Sprintf("https://%s:%d", cfg.General.AdvertisedHostname, cfg.AdminServer.Public.Port)
-	}
-	if cfg.AdminServer.Apis.DataplaneToken.Enabled {
-		cat.DataplaneToken.LocalUrl = fmt.Sprintf("http://localhost:%d", cfg.AdminServer.Local.Port)
-		if cfg.AdminServer.Public.Enabled {
-			cat.DataplaneToken.PublicUrl = fmt.Sprintf("https://%s:%d", cfg.General.AdvertisedHostname, cfg.AdminServer.Public.Port)
+func autoconfigureGeneral(cfg *kuma_cp.Config) error {
+	if cfg.General.WorkDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return errors.Errorf("failed to create a working directory inside $HOME: %v, "+
+				"please pick a working directory by setting KUMA_GENERAL_WORK_DIR manually", err)
 		}
-	}
-	cfg.ApiServer.Catalog = cat
-}
-
-func autoconfigureSds(cfg *kuma_cp.Config) error {
-	// to improve UX, we want to auto-generate TLS cert for SDS if possible
-	if cfg.Environment == config_core.UniversalEnvironment {
-		if cfg.SdsServer.TlsCertFile == "" {
-			var sdsHost = ""
-			if cfg.ApiServer.Catalog.Sds.Url != "" {
-				u, err := url.Parse(cfg.ApiServer.Catalog.Sds.Url)
-				if err != nil {
-					return errors.Wrap(err, "sds url is malformed")
-				}
-				sdsHost = strings.Split(u.Host, ":")[0]
-			}
-			if len(sdsHost) == 0 {
-				sdsHost = cfg.BootstrapServer.Params.XdsHost
-			}
-			hosts := []string{
-				sdsHost,
-				"localhost",
-			}
-			// notice that Envoy's SDS client (Google gRPC) does require DNS SAN in a X509 cert of an SDS server
-			sdsCert, err := tls.NewSelfSignedCert("kuma-sds", tls.ServerCertType, hosts...)
-			if err != nil {
-				return errors.Wrap(err, "failed to auto-generate TLS certificate for SDS server")
-			}
-			crtFile, keyFile, err := saveKeyPair(sdsCert)
-			if err != nil {
-				return errors.Wrap(err, "failed to save auto-generated TLS certificate for SDS server")
-			}
-			cfg.SdsServer.TlsCertFile = crtFile
-			cfg.SdsServer.TlsKeyFile = keyFile
-
-			autoconfigureLog.Info("auto-generated TLS certificate for SDS server", "crtFile", crtFile, "keyFile", keyFile)
-		}
+		cfg.General.WorkDir = path.Join(home, ".kuma")
 	}
 	return nil
 }
 
-func autoconfigureAdminServer(cfg *kuma_cp.Config) {
-	// use old dataplane token server config values for admin server
-	if !reflect.DeepEqual(cfg.DataplaneTokenServer, token_server.DefaultDataplaneTokenServerConfig()) {
-		autoconfigureLog.Info("Deprecated DataplaneTokenServer config is used. It will be removed in the next major version of Kuma - use AdminServer config instead.")
-		cfg.AdminServer = &admin_server.AdminServerConfig{
-			Apis: &admin_server.AdminServerApisConfig{
-				DataplaneToken: &admin_server.DataplaneTokenApiConfig{
-					Enabled: cfg.DataplaneTokenServer.Enabled,
-				},
-			},
-			Local: &admin_server.LocalAdminServerConfig{
-				Port: cfg.DataplaneTokenServer.Local.Port,
-			},
-			Public: &admin_server.PublicAdminServerConfig{
-				Enabled:        cfg.DataplaneTokenServer.Public.Enabled,
-				Interface:      cfg.DataplaneTokenServer.Public.Interface,
-				Port:           cfg.DataplaneTokenServer.Public.Port,
-				TlsCertFile:    cfg.DataplaneTokenServer.Public.TlsCertFile,
-				TlsKeyFile:     cfg.DataplaneTokenServer.Public.TlsKeyFile,
-				ClientCertsDir: cfg.DataplaneTokenServer.Public.ClientCertsDir,
-			},
+func autoconfigureDpServerAuth(cfg *kuma_cp.Config) {
+	if cfg.DpServer.Auth.Type == "" {
+		switch cfg.Environment {
+		case config_core.KubernetesEnvironment:
+			cfg.DpServer.Auth.Type = dp_server.DpServerAuthServiceAccountToken
+		case config_core.UniversalEnvironment:
+			cfg.DpServer.Auth.Type = dp_server.DpServerAuthDpToken
 		}
-	}
-
-	if cfg.AdminServer.Public.Enabled && cfg.AdminServer.Public.Port == 0 {
-		cfg.AdminServer.Public.Port = cfg.AdminServer.Local.Port
 	}
 }
 
-func autoconfigureGui(cfg *kuma_cp.Config) {
-	cfg.GuiServer.ApiServerUrl = fmt.Sprintf("http://localhost:%d", cfg.ApiServer.Port)
-	cfg.GuiServer.GuiConfig = &gui_server.GuiConfig{
-		ApiUrl:      "/api",
-		Environment: cfg.Environment,
+func autoconfigureServersTLS(cfg *kuma_cp.Config) {
+	if cfg.Multizone.Global.KDS.TlsCertFile == "" {
+		cfg.Multizone.Global.KDS.TlsCertFile = cfg.General.TlsCertFile
+		cfg.Multizone.Global.KDS.TlsKeyFile = cfg.General.TlsKeyFile
 	}
+	if cfg.DpServer.TlsCertFile == "" {
+		cfg.DpServer.TlsCertFile = cfg.General.TlsCertFile
+		cfg.DpServer.TlsKeyFile = cfg.General.TlsKeyFile
+	}
+	if cfg.ApiServer.HTTPS.TlsCertFile == "" {
+		cfg.ApiServer.HTTPS.TlsCertFile = cfg.General.TlsCertFile
+		cfg.ApiServer.HTTPS.TlsKeyFile = cfg.General.TlsKeyFile
+	}
+}
+
+func autoconfigureTLS(cfg *kuma_cp.Config) error {
+	if cfg.General.TlsCertFile != "" {
+		return nil
+	}
+	autoconfigureLog.Info(fmt.Sprintf("directory %v will be used as a working directory, "+
+		"it could be changed using KUMA_GENERAL_WORK_DIR environment variable", cfg.General.WorkDir))
+
+	if crtFile, keyFile, err := tryReadKeyPair(workDir(cfg.General.WorkDir)); err == nil {
+		cfg.General.TlsCertFile = crtFile
+		cfg.General.TlsKeyFile = keyFile
+		autoconfigureLog.Info("Kuma detected TLS cert and key in the working directory")
+		return nil
+	}
+
+	ips, err := util_net.GetAllIPs()
+	if err != nil {
+		return errors.Wrap(err, "could not list all IPs of the machine")
+	}
+	hostname, err := os.Hostname()
+	if err != nil {
+		return errors.Wrap(err, "could not get a hostname of the machine")
+	}
+	hosts := append([]string{hostname, "localhost"}, ips...)
+	cert, err := tls.NewSelfSignedCert("kuma-control-plane", tls.ServerCertType, hosts...)
+	if err != nil {
+		return errors.Wrap(err, "failed to auto-generate TLS certificate")
+	}
+	crtFile, keyFile, err := saveKeyPair(cert, workDir(cfg.General.WorkDir))
+	if err != nil {
+		return errors.Errorf("failed to save auto-generated TLS cert and key into a working directory: %v, "+
+			"working directory could be changed using KUMA_GENERAL_WORK_DIR environment variable", err)
+	}
+	cfg.General.TlsCertFile = crtFile
+	cfg.General.TlsKeyFile = keyFile
+	autoconfigureLog.Info("TLS certificate autogenerated. Autogenerated certificates are not synchronized between CP instances. It is only valid if the data plane proxy connects to the CP by one of the following address "+strings.Join(hosts, ", ")+
+		". It is recommended to generate your own certificate based on yours trusted CA. You can also generate your own self-signed certificates using 'kumactl generate tls-certificate --type=server --cp-hostname=<hostname>' and configure them using KUMA_GENERAL_TLS_CERT_FILE and KUMA_GENERAL_TLS_KEY_FILE", "crtFile", crtFile, "keyFile", keyFile)
+	return nil
 }
 
 func autoconfigBootstrapXdsParams(cfg *kuma_cp.Config) {
-	if cfg.BootstrapServer.Params.XdsHost == "" {
-		cfg.BootstrapServer.Params.XdsHost = cfg.General.AdvertisedHostname
-	}
 	if cfg.BootstrapServer.Params.XdsPort == 0 {
-		cfg.BootstrapServer.Params.XdsPort = uint32(cfg.XdsServer.GrpcPort)
+		cfg.BootstrapServer.Params.XdsPort = uint32(cfg.DpServer.Port)
 	}
 }
 
-func saveKeyPair(pair tls.KeyPair) (string, string, error) {
-	crtFile, err := ioutil.TempFile("", "*.crt")
-	if err != nil {
-		return "", "", errors.Wrap(err, "failed to create a temp file with TLS cert")
+type workDir string
+
+func (w workDir) Open(name string) (*os.File, error) {
+	if err := os.MkdirAll(string(w), 0700); err != nil && !os.IsExist(err) {
+		return nil, err
 	}
+	return os.OpenFile(path.Join(string(w), name), os.O_RDWR|os.O_CREATE, 0600)
+}
+
+func tryReadKeyPair(dir workDir) (string, string, error) {
+	crtFile, err := dir.Open(crtFileName)
+	if err != nil {
+		return "", "", errors.Wrap(err, "failed to open a file with TLS cert")
+	}
+	defer func() {
+		if err := crtFile.Close(); err != nil {
+			autoconfigureLog.Error(err, "failed to close TLS cert file")
+		}
+	}()
+
+	certPEM, err := ioutil.ReadFile(crtFile.Name())
+	if err != nil {
+		return "", "", err
+	}
+	if len(certPEM) == 0 {
+		return "", "", errors.New("file with TLS cert is empty")
+	}
+	keyFile, err := dir.Open(keyFileName)
+	if err != nil {
+		return "", "", errors.Wrap(err, "failed to open a file with TLS key")
+	}
+	defer func() {
+		if err := keyFile.Close(); err != nil {
+			autoconfigureLog.Error(err, "failed to close TLS key file")
+		}
+	}()
+	keyPEM, err := ioutil.ReadFile(keyFile.Name())
+	if err != nil {
+		return "", "", err
+	}
+	if len(keyPEM) == 0 {
+		return "", "", errors.New("file with TLS cert is empty")
+	}
+	return crtFile.Name(), keyFile.Name(), nil
+}
+
+func saveKeyPair(pair tls.KeyPair, dir workDir) (string, string, error) {
+	crtFile, err := dir.Open(crtFileName)
+	if err != nil {
+		return "", "", errors.Wrap(err, "failed to create a file with TLS cert")
+	}
+	defer func() {
+		if err := crtFile.Close(); err != nil {
+			autoconfigureLog.Error(err, "failed to close TLS cert file")
+		}
+	}()
 	if err := ioutil.WriteFile(crtFile.Name(), pair.CertPEM, os.ModeTemporary); err != nil {
-		return "", "", errors.Wrapf(err, "failed to save TLS cert into a temp file %q", crtFile.Name())
+		return "", "", errors.Wrapf(err, "failed to save TLS cert into a file %q", crtFile.Name())
 	}
 
-	keyFile, err := ioutil.TempFile("", "*.key")
+	keyFile, err := dir.Open(keyFileName)
 	if err != nil {
-		return "", "", errors.Wrap(err, "failed to create a temp file with TLS key")
+		return "", "", errors.Wrap(err, "failed to create a file with TLS key")
 	}
+	defer func() {
+		if err := keyFile.Close(); err != nil {
+			autoconfigureLog.Error(err, "failed to close TLS key file")
+		}
+	}()
 	if err := ioutil.WriteFile(keyFile.Name(), pair.KeyPEM, os.ModeTemporary); err != nil {
-		return "", "", errors.Wrapf(err, "failed to save TLS key into a temp file %q", keyFile.Name())
+		return "", "", errors.Wrapf(err, "failed to save TLS key into a file %q", keyFile.Name())
 	}
 
 	return crtFile.Name(), keyFile.Name(), nil

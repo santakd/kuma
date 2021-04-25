@@ -6,14 +6,15 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/Kong/kuma/pkg/config"
+	"github.com/kumahq/kuma/pkg/config"
+	envoy_common "github.com/kumahq/kuma/pkg/xds/envoy"
 )
 
 var _ config.Config = &BootstrapServerConfig{}
 
 type BootstrapServerConfig struct {
-	// Port of Server that provides bootstrap configuration for dataplanes
-	Port uint32 `yaml:"port" envconfig:"kuma_bootstrap_server_port"`
+	// The version of Envoy API (available: "v2", "v3")
+	APIVersion envoy_common.APIVersion `yaml:"apiVersion" envconfig:"kuma_bootstrap_server_api_version"`
 	// Parameters of bootstrap configuration
 	Params *BootstrapParamsConfig `yaml:"params"`
 }
@@ -23,19 +24,21 @@ func (b *BootstrapServerConfig) Sanitize() {
 }
 
 func (b *BootstrapServerConfig) Validate() error {
-	if b.Port > 65535 {
-		return errors.New("Port must be in the range [0, 65535]")
-	}
 	if err := b.Params.Validate(); err != nil {
 		return errors.Wrap(err, "Params validation failed")
+	}
+	switch b.APIVersion {
+	case envoy_common.APIV2, envoy_common.APIV3:
+	default:
+		return errors.Errorf("APIVersion has invalid value. Available values: %q, %q", envoy_common.APIV2, envoy_common.APIV3)
 	}
 	return nil
 }
 
 func DefaultBootstrapServerConfig() *BootstrapServerConfig {
 	return &BootstrapServerConfig{
-		Port:   5682,
-		Params: DefaultBootstrapParamsConfig(),
+		APIVersion: envoy_common.APIV3,
+		Params:     DefaultBootstrapParamsConfig(),
 	}
 }
 
@@ -48,7 +51,7 @@ type BootstrapParamsConfig struct {
 	AdminPort uint32 `yaml:"adminPort" envconfig:"kuma_bootstrap_server_params_admin_port"`
 	// Path to access log file of Envoy Admin
 	AdminAccessLogPath string `yaml:"adminAccessLogPath" envconfig:"kuma_bootstrap_server_params_admin_access_log_path"`
-	// Host of XDS Server. By default it is autoconfigured from KUMA_GENERAL_ADVERTISED_HOSTNAME
+	// Host of XDS Server. By default it is the same host as the one used by kuma-dp to connect to the control plane
 	XdsHost string `yaml:"xdsHost" envconfig:"kuma_bootstrap_server_params_xds_host"`
 	// Port of XDS Server. By default it is autoconfigured from KUMA_XDS_SERVER_GRPC_PORT
 	XdsPort uint32 `yaml:"xdsPort" envconfig:"kuma_bootstrap_server_params_xds_port"`
@@ -86,7 +89,7 @@ func DefaultBootstrapParamsConfig() *BootstrapParamsConfig {
 		AdminAddress:       "127.0.0.1", // by default, Envoy Admin interface should listen on loopback address
 		AdminPort:          0,           // by default, turn off Admin interface of Envoy
 		AdminAccessLogPath: "/dev/null",
-		XdsHost:            "", // by default it is autoconfigured from KUMA_GENERAL_ADVERTISED_HOSTNAME
+		XdsHost:            "", // by default it is the same host as the one used by kuma-dp to connect to the control plane
 		XdsPort:            0,  // by default it is autoconfigured from KUMA_XDS_SERVER_GRPC_PORT
 		XdsConnectTimeout:  1 * time.Second,
 	}

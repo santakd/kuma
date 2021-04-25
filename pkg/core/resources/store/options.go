@@ -4,13 +4,15 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Kong/kuma/pkg/core/resources/model"
+	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
 )
 
 type CreateOptions struct {
 	Name         string
 	Mesh         string
 	CreationTime time.Time
+	Owner        core_model.Resource
+	Synced       bool
 }
 
 type CreateOptionsFunc func(*CreateOptions)
@@ -23,7 +25,7 @@ func NewCreateOptions(fs ...CreateOptionsFunc) *CreateOptions {
 	return opts
 }
 
-func CreateBy(key model.ResourceKey) CreateOptionsFunc {
+func CreateBy(key core_model.ResourceKey) CreateOptionsFunc {
 	return CreateByKey(key.Name, key.Mesh)
 }
 
@@ -40,13 +42,32 @@ func CreatedAt(creationTime time.Time) CreateOptionsFunc {
 	}
 }
 
+func CreateWithOwner(owner core_model.Resource) CreateOptionsFunc {
+	return func(opts *CreateOptions) {
+		opts.Owner = owner
+	}
+}
+
+func CreateSynced() CreateOptionsFunc {
+	return func(opts *CreateOptions) {
+		opts.Synced = true
+	}
+}
+
 type UpdateOptions struct {
 	ModificationTime time.Time
+	Synced           bool
 }
 
 func ModifiedAt(modificationTime time.Time) UpdateOptionsFunc {
 	return func(opts *UpdateOptions) {
 		opts.ModificationTime = modificationTime
+	}
+}
+
+func UpdateSynced() UpdateOptionsFunc {
+	return func(opts *UpdateOptions) {
+		opts.Synced = true
 	}
 }
 
@@ -75,7 +96,7 @@ func NewDeleteOptions(fs ...DeleteOptionsFunc) *DeleteOptions {
 	return opts
 }
 
-func DeleteBy(key model.ResourceKey) DeleteOptionsFunc {
+func DeleteBy(key core_model.ResourceKey) DeleteOptionsFunc {
 	return DeleteByKey(key.Name, key.Mesh)
 }
 
@@ -122,7 +143,7 @@ func NewGetOptions(fs ...GetOptionsFunc) *GetOptions {
 	return opts
 }
 
-func GetBy(key model.ResourceKey) GetOptionsFunc {
+func GetBy(key core_model.ResourceKey) GetOptionsFunc {
 	return GetByKey(key.Name, key.Mesh)
 }
 
@@ -143,10 +164,13 @@ func (g *GetOptions) HashCode() string {
 	return fmt.Sprintf("%s:%s", g.Name, g.Mesh)
 }
 
+type ListFilterFunc func(rs core_model.Resource) bool
+
 type ListOptions struct {
 	Mesh       string
 	PageSize   int
 	PageOffset string
+	FilterFunc ListFilterFunc
 }
 
 type ListOptionsFunc func(*ListOptions)
@@ -157,6 +181,15 @@ func NewListOptions(fs ...ListOptionsFunc) *ListOptions {
 		f(opts)
 	}
 	return opts
+}
+
+// Filter returns true if the item passes the filtering criteria
+func (l *ListOptions) Filter(rs core_model.Resource) bool {
+	if l.FilterFunc == nil {
+		return true
+	}
+
+	return l.FilterFunc(rs)
 }
 
 func ListByMesh(mesh string) ListOptionsFunc {

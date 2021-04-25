@@ -2,17 +2,15 @@ package install_test
 
 import (
 	"bytes"
-	"io/ioutil"
 	"path/filepath"
-
-	kuma_version "github.com/Kong/kuma/pkg/version"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	"github.com/Kong/kuma/app/kumactl/cmd"
-	"github.com/Kong/kuma/app/kumactl/pkg/install/data"
+	"github.com/kumahq/kuma/app/kumactl/cmd"
+	kumactl_cmd "github.com/kumahq/kuma/app/kumactl/pkg/cmd"
+	kuma_version "github.com/kumahq/kuma/pkg/version"
 )
 
 var _ = Describe("kumactl install metrics", func() {
@@ -42,38 +40,23 @@ var _ = Describe("kumactl install metrics", func() {
 	DescribeTable("should generate Kubernetes resources",
 		func(given testCase) {
 			// given
-			rootCmd := cmd.DefaultRootCmd()
+			rootCtx := kumactl_cmd.DefaultRootContext()
+			rootCtx.InstallMetricsContext.TemplateArgs.KumaPrometheusSdVersion = "0.0.1"
+			rootCmd := cmd.NewRootCmd(rootCtx)
 			rootCmd.SetArgs(append([]string{"install", "metrics"}, given.extraArgs...))
 			rootCmd.SetOut(stdout)
 			rootCmd.SetErr(stderr)
 
 			// when
 			err := rootCmd.Execute()
+
 			// then
 			Expect(err).ToNot(HaveOccurred())
-			// and
 			Expect(stderr.Bytes()).To(BeNil())
 
-			// when
-			expected, err := ioutil.ReadFile(filepath.Join("testdata", given.goldenFile))
-			// then
-			Expect(err).ToNot(HaveOccurred())
-			// and
-			expectedManifests := data.SplitYAML(data.File{Data: expected})
-
-			// when
+			// and output matches golden files
 			actual := stdout.Bytes()
-			// then
-			Expect(actual).To(MatchYAML(expected))
-			// and
-			actualManifests := data.SplitYAML(data.File{Data: actual})
-
-			// and
-			Expect(len(actualManifests)).To(Equal(len(expectedManifests)))
-			// and
-			for i := range expectedManifests {
-				Expect(actualManifests[i]).To(MatchYAML(expectedManifests[i]))
-			}
+			ExpectMatchesGoldenFiles(actual, filepath.Join("testdata", given.goldenFile))
 		},
 		Entry("should generate Kubernetes resources with default settings", testCase{
 			extraArgs:  nil,
@@ -82,11 +65,24 @@ var _ = Describe("kumactl install metrics", func() {
 		Entry("should generate Kubernetes resources with custom settings", testCase{
 			extraArgs: []string{
 				"--namespace", "kuma",
+				"--mesh", "mesh-1",
 				"--kuma-prometheus-sd-image", "kuma-ci/kuma-prometheus-sd",
 				"--kuma-prometheus-sd-version", "greatest",
 				"--kuma-cp-address", "http://kuma.local:5681",
 			},
 			goldenFile: "install-metrics.overrides.golden.yaml",
+		}),
+		Entry("should generate Kubernetes resources without prometheus", testCase{
+			extraArgs: []string{
+				"--without-prometheus",
+			},
+			goldenFile: "install-metrics.no-prometheus.golden.yaml",
+		}),
+		Entry("should generate Kubernetes resources without grafana", testCase{
+			extraArgs: []string{
+				"--without-grafana",
+			},
+			goldenFile: "install-metrics.no-grafana.golden.yaml",
 		}),
 	)
 })

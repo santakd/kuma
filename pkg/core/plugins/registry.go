@@ -10,7 +10,7 @@ const (
 	bootstrapPlugin     pluginType = "bootstrap"
 	resourceStorePlugin pluginType = "resource-store"
 	secretStorePlugin   pluginType = "secret-store"
-	discoveryPlugin     pluginType = "discovery"
+	configStorePlugin   pluginType = "config-store"
 	runtimePlugin       pluginType = "runtime"
 	caPlugin            pluginType = "ca"
 )
@@ -28,12 +28,11 @@ const (
 )
 
 type Registry interface {
-	Bootstrap(PluginName) (BootstrapPlugin, error)
+	BootstrapPlugins() map[PluginName]BootstrapPlugin
 	ResourceStore(name PluginName) (ResourceStorePlugin, error)
 	SecretStore(name PluginName) (SecretStorePlugin, error)
-	Discovery(name PluginName) (DiscoveryPlugin, error)
-	Runtime(name PluginName) (RuntimePlugin, error)
-	Ca(name PluginName) (CaPlugin, error)
+	ConfigStore(name PluginName) (ConfigStorePlugin, error)
+	RuntimePlugins() map[PluginName]RuntimePlugin
 	CaPlugins() map[PluginName]CaPlugin
 }
 
@@ -51,7 +50,7 @@ func NewRegistry() MutableRegistry {
 		bootstrap:     make(map[PluginName]BootstrapPlugin),
 		resourceStore: make(map[PluginName]ResourceStorePlugin),
 		secretStore:   make(map[PluginName]SecretStorePlugin),
-		discovery:     make(map[PluginName]DiscoveryPlugin),
+		configStore:   make(map[PluginName]ConfigStorePlugin),
 		runtime:       make(map[PluginName]RuntimePlugin),
 		ca:            make(map[PluginName]CaPlugin),
 	}
@@ -63,17 +62,9 @@ type registry struct {
 	bootstrap     map[PluginName]BootstrapPlugin
 	resourceStore map[PluginName]ResourceStorePlugin
 	secretStore   map[PluginName]SecretStorePlugin
-	discovery     map[PluginName]DiscoveryPlugin
+	configStore   map[PluginName]ConfigStorePlugin
 	runtime       map[PluginName]RuntimePlugin
 	ca            map[PluginName]CaPlugin
-}
-
-func (r *registry) Bootstrap(name PluginName) (BootstrapPlugin, error) {
-	if p, ok := r.bootstrap[name]; ok {
-		return p, nil
-	} else {
-		return nil, noSuchPluginError(bootstrapPlugin, name)
-	}
 }
 
 func (r *registry) ResourceStore(name PluginName) (ResourceStorePlugin, error) {
@@ -92,32 +83,24 @@ func (r *registry) SecretStore(name PluginName) (SecretStorePlugin, error) {
 	}
 }
 
-func (r *registry) Discovery(name PluginName) (DiscoveryPlugin, error) {
-	if p, ok := r.discovery[name]; ok {
+func (r *registry) ConfigStore(name PluginName) (ConfigStorePlugin, error) {
+	if p, ok := r.configStore[name]; ok {
 		return p, nil
 	} else {
-		return nil, noSuchPluginError(discoveryPlugin, name)
-	}
-}
-
-func (r *registry) Runtime(name PluginName) (RuntimePlugin, error) {
-	if p, ok := r.runtime[name]; ok {
-		return p, nil
-	} else {
-		return nil, noSuchPluginError(runtimePlugin, name)
-	}
-}
-
-func (r *registry) Ca(name PluginName) (CaPlugin, error) {
-	if p, ok := r.ca[name]; ok {
-		return p, nil
-	} else {
-		return nil, noSuchPluginError(caPlugin, name)
+		return nil, noSuchPluginError(configStorePlugin, name)
 	}
 }
 
 func (r *registry) CaPlugins() map[PluginName]CaPlugin {
 	return r.ca
+}
+
+func (r *registry) RuntimePlugins() map[PluginName]RuntimePlugin {
+	return r.runtime
+}
+
+func (r *registry) BootstrapPlugins() map[PluginName]BootstrapPlugin {
+	return r.bootstrap
 }
 
 func (r *registry) Register(name PluginName, plugin Plugin) error {
@@ -139,11 +122,11 @@ func (r *registry) Register(name PluginName, plugin Plugin) error {
 		}
 		r.secretStore[name] = ssp
 	}
-	if dp, ok := plugin.(DiscoveryPlugin); ok {
-		if old, exists := r.discovery[name]; exists {
-			return pluginAlreadyRegisteredError(discoveryPlugin, name, old, dp)
+	if csp, ok := plugin.(ConfigStorePlugin); ok {
+		if old, exists := r.configStore[name]; exists {
+			return pluginAlreadyRegisteredError(configStorePlugin, name, old, csp)
 		}
-		r.discovery[name] = dp
+		r.configStore[name] = csp
 	}
 	if rp, ok := plugin.(RuntimePlugin); ok {
 		if old, exists := r.runtime[name]; exists {

@@ -2,11 +2,18 @@ syntax = "proto3";
 
 package kuma.mesh.v1alpha1;
 
-option go_package = "v1alpha1";
+option go_package = "github.com/kumahq/kuma/api/mesh/v1alpha1";
 
 import "google/protobuf/duration.proto";
 import "mesh/v1alpha1/selector.proto";
 import "google/protobuf/wrappers.proto";
+import "config.proto";
+
+option (doc.config) = {
+  type : Policy,
+  name : "FaultInjection",
+  file_name : "fault-injection"
+};
 
 // FaultInjection defines the configuration of faults between dataplanes.
 message FaultInjection {

@@ -3,9 +3,9 @@ package mesh
 import (
 	"errors"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	"github.com/Kong/kuma/pkg/core/resources/model"
-	"github.com/Kong/kuma/pkg/core/resources/registry"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
+	"github.com/kumahq/kuma/pkg/core/resources/registry"
 )
 
 const (
@@ -16,7 +16,13 @@ var _ model.Resource = &TrafficPermissionResource{}
 
 type TrafficPermissionResource struct {
 	Meta model.ResourceMeta
-	Spec mesh_proto.TrafficPermission
+	Spec *mesh_proto.TrafficPermission
+}
+
+func NewTrafficPermissionResource() *TrafficPermissionResource {
+	return &TrafficPermissionResource{
+		Spec: &mesh_proto.TrafficPermission{},
+	}
 }
 
 func (t *TrafficPermissionResource) GetType() model.ResourceType {
@@ -29,16 +35,19 @@ func (t *TrafficPermissionResource) SetMeta(m model.ResourceMeta) {
 	t.Meta = m
 }
 func (t *TrafficPermissionResource) GetSpec() model.ResourceSpec {
-	return &t.Spec
+	return t.Spec
 }
 func (t *TrafficPermissionResource) SetSpec(spec model.ResourceSpec) error {
 	status, ok := spec.(*mesh_proto.TrafficPermission)
 	if !ok {
 		return errors.New("invalid type of spec")
 	} else {
-		t.Spec = *status
+		t.Spec = status
 		return nil
 	}
+}
+func (t *TrafficPermissionResource) Scope() model.ResourceScope {
+	return model.ScopeMesh
 }
 
 var _ model.ResourceList = &TrafficPermissionResourceList{}
@@ -59,7 +68,7 @@ func (l *TrafficPermissionResourceList) GetItemType() model.ResourceType {
 	return TrafficPermissionType
 }
 func (l *TrafficPermissionResourceList) NewItem() model.Resource {
-	return &TrafficPermissionResource{}
+	return NewTrafficPermissionResource()
 }
 func (l *TrafficPermissionResourceList) AddItem(r model.Resource) error {
 	if trr, ok := r.(*TrafficPermissionResource); ok {
@@ -69,11 +78,8 @@ func (l *TrafficPermissionResourceList) AddItem(r model.Resource) error {
 		return model.ErrorInvalidItemType((*TrafficPermissionResource)(nil), r)
 	}
 }
-func (l *TrafficPermissionResourceList) GetPagination() model.Pagination {
-	return l.Pagination
-}
-func (l *TrafficPermissionResourceList) SetPagination(pagination model.Pagination) {
-	l.Pagination = pagination
+func (l *TrafficPermissionResourceList) GetPagination() *model.Pagination {
+	return &l.Pagination
 }
 
 func (t *TrafficPermissionResource) Sources() []*mesh_proto.Selector {
@@ -85,6 +91,6 @@ func (t *TrafficPermissionResource) Destinations() []*mesh_proto.Selector {
 }
 
 func init() {
-	registry.RegisterType(&TrafficPermissionResource{})
+	registry.RegisterType(NewTrafficPermissionResource())
 	registry.RegistryListType(&TrafficPermissionResourceList{})
 }

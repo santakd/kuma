@@ -10,8 +10,9 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	"github.com/Kong/kuma/pkg/config"
-	. "github.com/Kong/kuma/pkg/config/xds/bootstrap"
+	"github.com/kumahq/kuma/pkg/config"
+	. "github.com/kumahq/kuma/pkg/config/xds/bootstrap"
+	"github.com/kumahq/kuma/pkg/xds/envoy"
 )
 
 var _ = Describe("BootstrappServerConfig", func() {
@@ -26,7 +27,6 @@ var _ = Describe("BootstrappServerConfig", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// and
-		Expect(cfg.Port).To(Equal(uint32(1234)))
 		Expect(cfg.Params.AdminAddress).To(Equal("192.168.0.1"))
 		Expect(cfg.Params.AdminPort).To(Equal(uint32(4321)))
 		Expect(cfg.Params.AdminAccessLogPath).To(Equal("/var/log"))
@@ -54,7 +54,7 @@ var _ = Describe("BootstrappServerConfig", func() {
 		It("should be loadable from environment variables", func() {
 			// setup
 			env := map[string]string{
-				"KUMA_BOOTSTRAP_SERVER_PORT":                         "1234",
+				"KUMA_BOOTSTRAP_SERVER_API_VERSION":                  "v2",
 				"KUMA_BOOTSTRAP_SERVER_PARAMS_ADMIN_ADDRESS":         "192.168.0.1",
 				"KUMA_BOOTSTRAP_SERVER_PARAMS_ADMIN_PORT":            "4321",
 				"KUMA_BOOTSTRAP_SERVER_PARAMS_ADMIN_ACCESS_LOG_PATH": "/var/log",
@@ -76,7 +76,7 @@ var _ = Describe("BootstrappServerConfig", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// and
-			Expect(cfg.Port).To(Equal(uint32(1234)))
+			Expect(cfg.APIVersion).To(Equal(envoy.APIV2))
 			Expect(cfg.Params.AdminAddress).To(Equal("192.168.0.1"))
 			Expect(cfg.Params.AdminPort).To(Equal(uint32(4321)))
 			Expect(cfg.Params.AdminAccessLogPath).To(Equal("/var/log"))
@@ -101,16 +101,5 @@ var _ = Describe("BootstrappServerConfig", func() {
 		Expect(err).ToNot(HaveOccurred())
 		// and
 		Expect(actual).To(MatchYAML(expected))
-	})
-
-	It("should have validators", func() {
-		// given
-		cfg := BootstrapServerConfig{}
-
-		// when
-		err := config.Load(filepath.Join("testdata", "invalid-config.input.yaml"), &cfg)
-
-		// then
-		Expect(err).To(MatchError(`Invalid configuration: Port must be in the range [0, 65535]`))
 	})
 })

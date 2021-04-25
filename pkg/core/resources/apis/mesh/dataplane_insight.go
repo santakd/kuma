@@ -3,10 +3,10 @@ package mesh
 import (
 	"errors"
 
-	"github.com/Kong/kuma/pkg/core/resources/registry"
+	"github.com/kumahq/kuma/pkg/core/resources/registry"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	"github.com/Kong/kuma/pkg/core/resources/model"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
 )
 
 const (
@@ -17,7 +17,13 @@ var _ model.Resource = &DataplaneInsightResource{}
 
 type DataplaneInsightResource struct {
 	Meta model.ResourceMeta
-	Spec mesh_proto.DataplaneInsight
+	Spec *mesh_proto.DataplaneInsight
+}
+
+func NewDataplaneInsightResource() *DataplaneInsightResource {
+	return &DataplaneInsightResource{
+		Spec: &mesh_proto.DataplaneInsight{},
+	}
 }
 
 func (t *DataplaneInsightResource) GetType() model.ResourceType {
@@ -30,19 +36,22 @@ func (t *DataplaneInsightResource) SetMeta(m model.ResourceMeta) {
 	t.Meta = m
 }
 func (t *DataplaneInsightResource) GetSpec() model.ResourceSpec {
-	return &t.Spec
+	return t.Spec
 }
 func (t *DataplaneInsightResource) SetSpec(spec model.ResourceSpec) error {
 	status, ok := spec.(*mesh_proto.DataplaneInsight)
 	if !ok {
 		return errors.New("invalid type of spec")
 	} else {
-		t.Spec = *status
+		t.Spec = status
 		return nil
 	}
 }
 func (t *DataplaneInsightResource) Validate() error {
 	return nil
+}
+func (t *DataplaneInsightResource) Scope() model.ResourceScope {
+	return model.ScopeMesh
 }
 
 var _ model.ResourceList = &DataplaneInsightResourceList{}
@@ -63,7 +72,7 @@ func (l *DataplaneInsightResourceList) GetItemType() model.ResourceType {
 	return DataplaneInsightType
 }
 func (l *DataplaneInsightResourceList) NewItem() model.Resource {
-	return &DataplaneInsightResource{}
+	return NewDataplaneInsightResource()
 }
 func (l *DataplaneInsightResourceList) AddItem(r model.Resource) error {
 	if trr, ok := r.(*DataplaneInsightResource); ok {
@@ -74,15 +83,11 @@ func (l *DataplaneInsightResourceList) AddItem(r model.Resource) error {
 	}
 }
 
-func (l *DataplaneInsightResourceList) GetPagination() model.Pagination {
-	return l.Pagination
-}
-
-func (l *DataplaneInsightResourceList) SetPagination(pagination model.Pagination) {
-	l.Pagination = pagination
+func (l *DataplaneInsightResourceList) GetPagination() *model.Pagination {
+	return &l.Pagination
 }
 
 func init() {
-	registry.RegisterType(&DataplaneInsightResource{})
+	registry.RegisterType(NewDataplaneInsightResource())
 	registry.RegistryListType(&DataplaneInsightResourceList{})
 }

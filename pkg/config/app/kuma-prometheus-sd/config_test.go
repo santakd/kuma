@@ -9,8 +9,8 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	"github.com/Kong/kuma/pkg/config"
-	kuma_promsd "github.com/Kong/kuma/pkg/config/app/kuma-prometheus-sd"
+	"github.com/kumahq/kuma/pkg/config"
+	kuma_promsd "github.com/kumahq/kuma/pkg/config/app/kuma-prometheus-sd"
 )
 
 var _ = Describe("Config", func() {
@@ -33,9 +33,10 @@ var _ = Describe("Config", func() {
 		It("should be loadable from environment variables", func() {
 			// setup
 			env := map[string]string{
-				"KUMA_CONTROL_PLANE_API_SERVER_URL":      "https://kuma-control-plane.internal:5682",
-				"KUMA_MONITORING_ASSIGNMENT_CLIENT_NAME": "custom",
-				"KUMA_PROMETHEUS_OUTPUT_FILE":            "/path/to/file",
+				"KUMA_MONITORING_ASSIGNMENT_CLIENT_URL":         "grpc://kuma-control-plane.internal:5682",
+				"KUMA_MONITORING_ASSIGNMENT_CLIENT_NAME":        "custom",
+				"KUMA_MONITORING_ASSIGNMENT_CLIENT_API_VERSION": "v1alpha1",
+				"KUMA_PROMETHEUS_OUTPUT_FILE":                   "/path/to/file",
 			}
 			for key, value := range env {
 				os.Setenv(key, value)
@@ -51,8 +52,8 @@ var _ = Describe("Config", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// and
-			Expect(cfg.ControlPlane.ApiServer.URL).To(Equal("https://kuma-control-plane.internal:5682"))
 			Expect(cfg.MonitoringAssignment.Client.Name).To(Equal("custom"))
+			Expect(cfg.MonitoringAssignment.Client.URL).To(Equal("grpc://kuma-control-plane.internal:5682"))
 			Expect(cfg.Prometheus.OutputFile).To(Equal("/path/to/file"))
 		})
 	})
@@ -68,8 +69,8 @@ var _ = Describe("Config", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// and
-		Expect(cfg.ControlPlane.ApiServer.URL).To(Equal("https://kuma-control-plane.internal:5682"))
 		Expect(cfg.MonitoringAssignment.Client.Name).To(Equal("custom"))
+		Expect(cfg.MonitoringAssignment.Client.URL).To(Equal("grpc://kuma-control-plane.internal:5682"))
 		Expect(cfg.Prometheus.OutputFile).To(Equal("/path/to/file"))
 	})
 
@@ -98,6 +99,20 @@ var _ = Describe("Config", func() {
 		err := config.Load(filepath.Join("testdata", "invalid-config.input.yaml"), &cfg)
 
 		// then
-		Expect(err.Error()).To(Equal(`Invalid configuration: .ControlPlane is not valid: .ApiServer is not valid: .URL must be a valid absolute URI; .MonitoringAssignment is not valid: .Client is not valid: .Name must be non-empty; .Prometheus is not valid: .OutputFile must be non-empty`))
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(Equal(`Invalid configuration: .MonitoringAssignment is not valid: .Client is not valid: .Name must be non-empty; .URL must be a valid absolute URI; .URL must start with grpc:// or grpcs://; .ApiVersion must be non-empty; .Prometheus is not valid: .OutputFile must be non-empty`))
+	})
+
+	It("should allow grpcs", func() {
+		// given
+		cfg := kuma_promsd.Config{}
+
+		// when
+		err := config.Load(filepath.Join("testdata", "valid-grpcs-config.input.yaml"), &cfg)
+
+		// then
+		Expect(err).ToNot(HaveOccurred())
+		// and
+		Expect(cfg.MonitoringAssignment.Client.URL).To(Equal("grpcs://kuma-control-plane.internal:5682"))
 	})
 })

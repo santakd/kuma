@@ -50,11 +50,13 @@ spec:
       labels:
         component: "node-exporter"
         app: prometheus
+      annotations:
+        kuma.io/sidecar-injection: "disabled" # disabled for now, injecting DP crashes K8S cluster
     spec:
       serviceAccountName: prometheus-node-exporter
       containers:
         - name: prometheus-node-exporter
-          image: "prom/node-exporter:v0.18.1"
+          image: "prom/node-exporter:v1.1.1"
           imagePullPolicy: "IfNotPresent"
           args:
             - --path.procfs=/host/proc

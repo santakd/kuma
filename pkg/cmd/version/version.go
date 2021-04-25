@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	kuma_version "github.com/Kong/kuma/pkg/version"
+	kuma_version "github.com/kumahq/kuma/pkg/version"
 )
 
 func NewVersionCmd() *cobra.Command {
@@ -20,12 +20,13 @@ func NewVersionCmd() *cobra.Command {
 			buildInfo := kuma_version.Build
 
 			if args.detailed {
+				cmd.Println(fmt.Sprintf("Product:    %s", kuma_version.Product))
 				cmd.Println(fmt.Sprintf("Version:    %s", buildInfo.Version))
 				cmd.Println(fmt.Sprintf("Git Tag:    %s", buildInfo.GitTag))
 				cmd.Println(fmt.Sprintf("Git Commit: %s", buildInfo.GitCommit))
 				cmd.Println(fmt.Sprintf("Build Date: %s", buildInfo.BuildDate))
 			} else {
-				cmd.Println(buildInfo.Version)
+				cmd.Printf("%s: %s\n", kuma_version.Product, buildInfo.Version)
 			}
 
 			return nil

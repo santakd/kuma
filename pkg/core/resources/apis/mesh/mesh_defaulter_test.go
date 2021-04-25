@@ -5,9 +5,9 @@ import (
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	. "github.com/Kong/kuma/pkg/core/resources/apis/mesh"
+	. "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
 
-	util_proto "github.com/Kong/kuma/pkg/util/proto"
+	util_proto "github.com/kumahq/kuma/pkg/util/proto"
 )
 
 var _ = Describe("MeshResource", func() {
@@ -21,8 +21,8 @@ var _ = Describe("MeshResource", func() {
 
 		applyDefaultsScenario := func(given testCase) {
 			// given
-			mesh := &MeshResource{}
-			err := util_proto.FromYAML([]byte(given.input), &mesh.Spec)
+			mesh := NewMeshResource()
+			err := util_proto.FromYAML([]byte(given.input), mesh.Spec)
 			Expect(err).ToNot(HaveOccurred())
 
 			// when
@@ -30,14 +30,14 @@ var _ = Describe("MeshResource", func() {
 
 			// then
 			Expect(err).ToNot(HaveOccurred())
-			actual, err := util_proto.ToYAML(&mesh.Spec)
+			actual, err := util_proto.ToYAML(mesh.Spec)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(actual).To(MatchYAML(given.expected))
 		}
 
 		DescribeTable("should apply defaults on a target MeshResource",
 			applyDefaultsScenario,
-			Entry("when both `metrics.prometheus.port` and `metrics.prometheus.path` are not set", testCase{
+			Entry("when defaults are not set", testCase{
 				input: `
                 metrics:
                   enabledBackend: prometheus-1
@@ -51,20 +51,26 @@ var _ = Describe("MeshResource", func() {
                   backends:
                   - name: prometheus-1
                     type: prometheus
-                    config:
+                    conf:
                       port: 5670
                       path: /metrics
+                      tags:
+                        kuma.io/service: dataplane-metrics
 `,
 			}),
-			Entry("when `metrics.prometheus.port` is not set", testCase{
+			Entry("when defaults are set", testCase{
 				input: `
                 metrics:
                   enabledBackend: prometheus-1
                   backends:
                   - name: prometheus-1
                     type: prometheus
-                    config:
+                    conf:
                       path: /non-standard-path
+                      port: 1234
+                      tags:
+                        kuma.io/service: dataplane-metrics
+                      skipMTLS: true
 `,
 				expected: `
                 metrics:
@@ -72,30 +78,12 @@ var _ = Describe("MeshResource", func() {
                   backends:
                   - name: prometheus-1
                     type: prometheus
-                    config:
-                      port: 5670
+                    conf:
                       path: /non-standard-path
-`,
-			}),
-			Entry("when `metrics.prometheus.path` is not set", testCase{
-				input: `
-                metrics:
-                  enabledBackend: prometheus-1
-                  backends:
-                  - name: prometheus-1
-                    type: prometheus
-                    config:
                       port: 1234
-`,
-				expected: `
-                metrics:
-                  enabledBackend: prometheus-1
-                  backends:
-                  - name: prometheus-1
-                    type: prometheus
-                    config:
-                      port: 1234
-                      path: /metrics
+                      tags:
+                        kuma.io/service: dataplane-metrics
+                      skipMTLS: true
 `,
 			}),
 		)

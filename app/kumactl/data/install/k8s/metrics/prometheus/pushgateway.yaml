@@ -78,25 +78,12 @@ spec:
       serviceAccountName: prometheus-pushgateway
       containers:
         - name: prometheus-pushgateway
-          image: "prom/pushgateway:v1.0.1"
+          image: "prom/pushgateway:v1.4.0"
           imagePullPolicy: "IfNotPresent"
           args:
           ports:
             - containerPort: 9091
-          livenessProbe:
-            httpGet:
-              path: /-/healthy
-              port: 9091
-            initialDelaySeconds: 10
-            timeoutSeconds: 10
-          readinessProbe:
-            httpGet:
-              path: /-/ready
-              port: 9091
-            initialDelaySeconds: 10
-            timeoutSeconds: 10
           resources:
             {}
       securityContext:
-        runAsNonRoot: true
         runAsUser: 65534

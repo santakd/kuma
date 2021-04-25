@@ -1,114 +1,66 @@
 package install
 
 import (
-	"fmt"
+	"net/url"
+
+	"k8s.io/client-go/rest"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
-	kumactl_cmd "github.com/Kong/kuma/app/kumactl/pkg/cmd"
-	"github.com/Kong/kuma/app/kumactl/pkg/install/data"
-	"github.com/Kong/kuma/app/kumactl/pkg/install/k8s"
-	controlplane "github.com/Kong/kuma/app/kumactl/pkg/install/k8s/control-plane"
-	kumacni "github.com/Kong/kuma/app/kumactl/pkg/install/k8s/kuma-cni"
-	"github.com/Kong/kuma/pkg/tls"
-	kuma_version "github.com/Kong/kuma/pkg/version"
+	install_context "github.com/kumahq/kuma/app/kumactl/cmd/install/context"
+	"github.com/kumahq/kuma/app/kumactl/pkg/install/k8s"
+
+	"github.com/kumahq/kuma/app/kumactl/pkg/install/data"
+	kuma_cmd "github.com/kumahq/kuma/pkg/cmd"
+	"github.com/kumahq/kuma/pkg/config/core"
 )
 
-var (
-	// overridable by unit tests
-	NewSelfSignedCert = tls.NewSelfSignedCert
-)
-
-func newInstallControlPlaneCmd(pctx *kumactl_cmd.RootContext) *cobra.Command {
-	args := struct {
-		Namespace               string
-		ImagePullPolicy         string
-		ControlPlaneVersion     string
-		ControlPlaneImage       string
-		ControlPlaneServiceName string
-		AdmissionServerTlsCert  string
-		AdmissionServerTlsKey   string
-		InjectorFailurePolicy   string
-		DataplaneImage          string
-		DataplaneInitImage      string
-		SdsTlsCert              string
-		SdsTlsKey               string
-		CNIEnabled              bool
-		CNIImage                string
-		CNIVersion              string
-	}{
-		Namespace:               "kuma-system",
-		ImagePullPolicy:         "IfNotPresent",
-		ControlPlaneVersion:     kuma_version.Build.Version,
-		ControlPlaneImage:       "kong-docker-kuma-docker.bintray.io/kuma-cp",
-		ControlPlaneServiceName: "kuma-control-plane",
-		AdmissionServerTlsCert:  "",
-		AdmissionServerTlsKey:   "",
-		InjectorFailurePolicy:   "Ignore",
-		DataplaneImage:          "kong-docker-kuma-docker.bintray.io/kuma-dp",
-		DataplaneInitImage:      "kong-docker-kuma-docker.bintray.io/kuma-init",
-		SdsTlsCert:              "",
-		SdsTlsKey:               "",
-		CNIImage:                "lobkovilya/install-cni",
-		CNIVersion:              "0.0.1",
-	}
+func newInstallControlPlaneCmd(ctx *install_context.InstallCpContext) *cobra.Command {
+	args := ctx.Args
+	useNodePort := false
+	ingressUseNodePort := false
 	cmd := &cobra.Command{
 		Use:   "control-plane",
 		Short: "Install Kuma Control Plane on Kubernetes",
-		Long:  `Install Kuma Control Plane on Kubernetes in a 'kuma-system' namespace.`,
+		Long: `Install Kuma Control Plane on Kubernetes in a 'kuma-system' namespace.
+This command requires that the KUBECONFIG environment is set`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if args.AdmissionServerTlsCert == "" && args.AdmissionServerTlsKey == "" {
-				fqdn := fmt.Sprintf("%s.%s.svc", args.ControlPlaneServiceName, args.Namespace)
-				// notice that Kubernetes doesn't requires DNS SAN in a X509 cert of a WebHook
-				admissionCert, err := NewSelfSignedCert(fqdn, tls.ServerCertType)
-				if err != nil {
-					return errors.Wrapf(err, "Failed to generate TLS certificate for %q", fqdn)
-				}
-				args.AdmissionServerTlsCert = string(admissionCert.CertPEM)
-				args.AdmissionServerTlsKey = string(admissionCert.KeyPEM)
-			} else if args.AdmissionServerTlsCert == "" || args.AdmissionServerTlsKey == "" {
-				return errors.Errorf("Admission Server: both TLS Cert and TLS Key must be provided at the same time")
+			if err := validateArgs(args); err != nil {
+				return err
 			}
 
-			if args.SdsTlsCert == "" && args.SdsTlsKey == "" {
-				fqdn := fmt.Sprintf("%s.%s.svc", args.ControlPlaneServiceName, args.Namespace)
-				hosts := []string{
-					fqdn,
-					fmt.Sprintf("%s.%s", args.ControlPlaneServiceName, args.Namespace),
-					args.ControlPlaneServiceName,
-					"localhost",
-				}
-				// notice that Envoy's SDS client (Google gRPC) does require DNS SAN in a X509 cert of an SDS server
-				sdsCert, err := NewSelfSignedCert(fqdn, tls.ServerCertType, hosts...)
-				if err != nil {
-					return errors.Wrapf(err, "Failed to generate TLS certificate for %q", fqdn)
-				}
-				args.SdsTlsCert = string(sdsCert.CertPEM)
-				args.SdsTlsKey = string(sdsCert.KeyPEM)
-			} else if args.SdsTlsCert == "" || args.SdsTlsKey == "" {
-				return errors.Errorf("SDS: both TLS Cert and TLS Key must be provided at the same time")
+			if useNodePort && args.ControlPlane_mode == core.Global {
+				args.ControlPlane_globalRemoteSyncService_type = "NodePort"
 			}
 
-			templateFiles, err := data.ReadFiles(controlplane.Templates)
+			if ingressUseNodePort {
+				args.Ingress_service_type = "NodePort"
+			}
+
+			var kubeClientConfig *rest.Config
+			if !args.WithoutKubernetesConnection {
+				var err error
+				kubeClientConfig, err = k8s.DefaultClientConfig()
+				if err != nil {
+					return errors.Wrap(err, "could not detect Kubernetes configuration")
+				}
+			}
+
+			templateFiles, err := ctx.InstallCpTemplateFiles(&args)
 			if err != nil {
 				return errors.Wrap(err, "Failed to read template files")
 			}
 
-			if args.CNIEnabled {
-				templateCNI, err := data.ReadFiles(kumacni.Templates)
-				if err != nil {
-					return errors.Wrap(err, "Failed to read template files")
-				}
-				templateFiles = append(templateFiles, templateCNI...)
-			}
-
-			renderedFiles, err := renderFiles(templateFiles, args, simpleTemplateRenderer)
+			renderedFiles, err := renderHelmFiles(templateFiles, args, args.Namespace, ctx.HELMValuesPrefix, kubeClientConfig)
 			if err != nil {
-				return errors.Wrap(err, "Failed to render template files")
+				return errors.Wrap(err, "Failed to render helm template files")
 			}
 
-			sortedResources := k8s.SortResourcesByKind(renderedFiles)
+			sortedResources, err := k8s.SortResourcesByKind(renderedFiles)
+			if err != nil {
+				return errors.Wrap(err, "Failed to sort resources by kind")
+			}
 
 			singleFile := data.JoinYAML(sortedResources)
 
@@ -121,19 +73,68 @@ func newInstallControlPlaneCmd(pctx *kumactl_cmd.RootContext) *cobra.Command {
 	}
 	// flags
 	cmd.Flags().StringVar(&args.Namespace, "namespace", args.Namespace, "namespace to install Kuma Control Plane to")
-	cmd.Flags().StringVar(&args.ImagePullPolicy, "image-pull-policy", args.ImagePullPolicy, "image pull policy that applies to all components of the Kuma Control Plane")
-	cmd.Flags().StringVar(&args.ControlPlaneVersion, "control-plane-version", args.ControlPlaneVersion, "version shared by all components of the Kuma Control Plane")
-	cmd.Flags().StringVar(&args.ControlPlaneImage, "control-plane-image", args.ControlPlaneImage, "image of the Kuma Control Plane component")
-	cmd.Flags().StringVar(&args.ControlPlaneServiceName, "control-plane-service-name", args.ControlPlaneServiceName, "Service name of the Kuma Control Plane")
-	cmd.Flags().StringVar(&args.AdmissionServerTlsCert, "admission-server-tls-cert", args.AdmissionServerTlsCert, "TLS certificate for the admission web hooks implemented by the Kuma Control Plane")
-	cmd.Flags().StringVar(&args.AdmissionServerTlsKey, "admission-server-tls-key", args.AdmissionServerTlsKey, "TLS key for the admission web hooks implemented by the Kuma Control Plane")
-	cmd.Flags().StringVar(&args.InjectorFailurePolicy, "injector-failure-policy", args.InjectorFailurePolicy, "failue policy of the mutating web hook implemented by the Kuma Injector component")
-	cmd.Flags().StringVar(&args.DataplaneImage, "dataplane-image", args.DataplaneImage, "image of the Kuma Dataplane component")
-	cmd.Flags().StringVar(&args.DataplaneInitImage, "dataplane-init-image", args.DataplaneInitImage, "init image of the Kuma Dataplane component")
-	cmd.Flags().StringVar(&args.SdsTlsCert, "sds-tls-cert", args.SdsTlsCert, "TLS certificate for the SDS server")
-	cmd.Flags().StringVar(&args.SdsTlsKey, "sds-tls-key", args.SdsTlsKey, "TLS key for the SDS server")
-	cmd.Flags().BoolVar(&args.CNIEnabled, "cni-enabled", args.CNIEnabled, "install Kuma with CNI instead of proxy init container")
-	cmd.Flags().StringVar(&args.CNIImage, "cni-image", args.CNIImage, "image of Kuma CNI component, if CNIEnabled equals true")
-	cmd.Flags().StringVar(&args.CNIVersion, "cni-version", args.CNIVersion, "version of the CNIImage")
+	cmd.Flags().StringVar(&args.ControlPlane_image_pullPolicy, "image-pull-policy", args.ControlPlane_image_pullPolicy, "image pull policy that applies to all components of the Kuma Control Plane")
+	cmd.Flags().StringVar(&args.ControlPlane_image_registry, "control-plane-registry", args.ControlPlane_image_registry, "registry for the image of the Kuma Control Plane component")
+	cmd.Flags().StringVar(&args.ControlPlane_image_repository, "control-plane-repository", args.ControlPlane_image_repository, "repository for the image of the Kuma Control Plane component")
+	cmd.Flags().StringVar(&args.ControlPlane_image_tag, "control-plane-version", args.ControlPlane_image_tag, "version of the image of the Kuma Control Plane component")
+	cmd.Flags().StringVar(&args.ControlPlane_service_name, "control-plane-service-name", args.ControlPlane_service_name, "Service name of the Kuma Control Plane")
+	cmd.Flags().StringVar(&args.ControlPlane_tls_general_secret, "tls-general-secret", args.ControlPlane_tls_general_secret, "Secret that contains tls.crt, key.crt and ca.crt for protecting Kuma in-cluster communication")
+	cmd.Flags().StringVar(&args.ControlPlane_tls_general_caBundle, "tls-general-ca-bundle", args.ControlPlane_tls_general_secret, "Base64 encoded CA certificate (the same as in controlPlane.tls.general.secret#ca.crt)")
+	cmd.Flags().StringVar(&args.ControlPlane_tls_apiServer_secret, "tls-api-server-secret", args.ControlPlane_tls_apiServer_secret, "Secret that contains tls.crt, key.crt for protecting Kuma API on HTTPS")
+	cmd.Flags().StringVar(&args.ControlPlane_tls_apiServer_clientCertsSecret, "tls-api-server-client-certs-secret", args.ControlPlane_tls_apiServer_clientCertsSecret, "Secret that contains list of .pem certificates that can access admin endpoints of Kuma API on HTTPS")
+	cmd.Flags().StringVar(&args.ControlPlane_tls_kdsGlobalServer_secret, "tls-kds-global-server-secret", args.ControlPlane_tls_kdsGlobalServer_secret, "Secret that contains tls.crt, key.crt for protecting cross cluster communication")
+	cmd.Flags().StringVar(&args.ControlPlane_tls_kdsRemoteClient_secret, "tls-kds-remote-client-secret", args.ControlPlane_tls_kdsRemoteClient_secret, "Secret that contains ca.crt which was used to sign KDS Global server. Used for CP verification")
+	cmd.Flags().StringVar(&args.ControlPlane_injectorFailurePolicy, "injector-failure-policy", args.ControlPlane_injectorFailurePolicy, "failue policy of the mutating web hook implemented by the Kuma Injector component")
+	cmd.Flags().StringToStringVar(&args.ControlPlane_envVars, "env-var", args.ControlPlane_envVars, "environment variables that will be passed to the control plane")
+	cmd.Flags().StringVar(&args.DataPlane_image_registry, "dataplane-registry", args.DataPlane_image_registry, "registry for the image of the Kuma DataPlane component")
+	cmd.Flags().StringVar(&args.DataPlane_image_repository, "dataplane-repository", args.DataPlane_image_repository, "repository for the image of the Kuma DataPlane component")
+	cmd.Flags().StringVar(&args.DataPlane_image_tag, "dataplane-version", args.DataPlane_image_tag, "version of the image of the Kuma DataPlane component")
+	cmd.Flags().StringVar(&args.DataPlane_initImage_registry, "dataplane-init-registry", args.DataPlane_initImage_registry, "registry for the init image of the Kuma DataPlane component")
+	cmd.Flags().StringVar(&args.DataPlane_initImage_repository, "dataplane-init-repository", args.DataPlane_initImage_repository, "repository for the init image of the Kuma DataPlane component")
+	cmd.Flags().StringVar(&args.DataPlane_initImage_tag, "dataplane-init-version", args.DataPlane_initImage_tag, "version of the init image of the Kuma DataPlane component")
+	cmd.Flags().StringVar(&args.ControlPlane_kdsGlobalAddress, "kds-global-address", args.ControlPlane_kdsGlobalAddress, "URL of Global Kuma CP (example: grpcs://192.168.0.1:5685)")
+	cmd.Flags().BoolVar(&args.Cni_enabled, "cni-enabled", args.Cni_enabled, "install Kuma with CNI instead of proxy init container")
+	cmd.Flags().BoolVar(&args.Cni_chained, "cni-chained", args.Cni_chained, "enable chained CNI installation")
+	cmd.Flags().StringVar(&args.Cni_net_dir, "cni-net-dir", args.Cni_net_dir, "set the CNI install directory")
+	cmd.Flags().StringVar(&args.Cni_bin_dir, "cni-bin-dir", args.Cni_bin_dir, "set the CNI binary directory")
+	cmd.Flags().StringVar(&args.Cni_conf_name, "cni-conf-name", args.Cni_conf_name, "set the CNI configuration name")
+	cmd.Flags().StringVar(&args.Cni_image_registry, "cni-registry", args.Cni_image_registry, "registry for the image of the Kuma CNI component")
+	cmd.Flags().StringVar(&args.Cni_image_repository, "cni-repository", args.Cni_image_repository, "repository for the image of the Kuma CNI component")
+	cmd.Flags().StringVar(&args.Cni_image_tag, "cni-version", args.Cni_image_tag, "version of the image of the Kuma CNI component")
+	cmd.Flags().StringVar(&args.ControlPlane_mode, "mode", args.ControlPlane_mode, kuma_cmd.UsageOptions("kuma cp modes", "standalone", "remote", "global"))
+	cmd.Flags().StringVar(&args.ControlPlane_zone, "zone", args.ControlPlane_zone, "set the Kuma zone name")
+	cmd.Flags().BoolVar(&useNodePort, "use-node-port", false, "use NodePort instead of LoadBalancer")
+	cmd.Flags().BoolVar(&args.Ingress_enabled, "ingress-enabled", args.Ingress_enabled, "install Kuma with an Ingress deployment, using the Data Plane image")
+	cmd.Flags().StringVar(&args.Ingress_drainTime, "ingress-drain-time", args.Ingress_drainTime, "drain time for Envoy proxy")
+	cmd.Flags().BoolVar(&ingressUseNodePort, "ingress-use-node-port", false, "use NodePort instead of LoadBalancer for the Ingress Service")
+	cmd.Flags().BoolVar(&args.WithoutKubernetesConnection, "without-kubernetes-connection", false, "install without connection to Kubernetes cluster. This can be used for initial Kuma installation, but not for upgrades")
 	return cmd
+}
+
+func validateArgs(args install_context.InstallControlPlaneArgs) error {
+	if err := core.ValidateCpMode(args.ControlPlane_mode); err != nil {
+		return err
+	}
+	if args.ControlPlane_mode == core.Remote && args.ControlPlane_zone == "" {
+		return errors.New("--zone is mandatory with `remote` mode")
+	}
+	if args.ControlPlane_mode == core.Remote && args.ControlPlane_kdsGlobalAddress == "" {
+		return errors.New("--kds-global-address is mandatory with `remote` mode")
+	}
+	if args.ControlPlane_kdsGlobalAddress != "" {
+		if args.ControlPlane_mode != core.Remote {
+			return errors.New("--kds-global-address can only be used when --mode=remote")
+		}
+		u, err := url.Parse(args.ControlPlane_kdsGlobalAddress)
+		if err != nil {
+			return errors.New("--kds-global-address is not valid URL. The allowed format is grpcs://hostname:port")
+		}
+		if u.Scheme != "grpcs" {
+			return errors.New("--kds-global-address should start with grpcs://")
+		}
+	}
+	if (args.ControlPlane_tls_general_secret == "") != (args.ControlPlane_tls_general_caBundle == "") {
+		return errors.New("--tls-general-secret and --tls-general-ca-bundle must be provided at the same time")
+	}
+	return nil
 }

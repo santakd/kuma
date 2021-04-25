@@ -3,28 +3,26 @@ package apply
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/Kong/kuma/pkg/core/resources/apis/system"
+	"github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	"github.com/kumahq/kuma/pkg/util/template"
 
-	"github.com/ghodss/yaml"
-	"github.com/hoisie/mustache"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
-	kumactl_cmd "github.com/Kong/kuma/app/kumactl/pkg/cmd"
-	"github.com/Kong/kuma/app/kumactl/pkg/output"
-	"github.com/Kong/kuma/app/kumactl/pkg/output/printers"
-	"github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	"github.com/Kong/kuma/pkg/core/resources/model"
-	"github.com/Kong/kuma/pkg/core/resources/model/rest"
-	rest_types "github.com/Kong/kuma/pkg/core/resources/model/rest"
-	"github.com/Kong/kuma/pkg/core/resources/registry"
-	"github.com/Kong/kuma/pkg/core/resources/store"
-	"github.com/Kong/kuma/pkg/util/proto"
+	kumactl_cmd "github.com/kumahq/kuma/app/kumactl/pkg/cmd"
+	"github.com/kumahq/kuma/app/kumactl/pkg/output"
+	"github.com/kumahq/kuma/app/kumactl/pkg/output/printers"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
+	"github.com/kumahq/kuma/pkg/core/resources/model/rest"
+	rest_types "github.com/kumahq/kuma/pkg/core/resources/model/rest"
+	"github.com/kumahq/kuma/pkg/core/resources/registry"
+	"github.com/kumahq/kuma/pkg/core/resources/store"
 )
 
 const (
@@ -47,11 +45,24 @@ func NewApplyCmd(pctx *kumactl_cmd.RootContext) *cobra.Command {
 		Use:   "apply",
 		Short: "Create or modify Kuma resources",
 		Long:  `Create or modify Kuma resources.`,
+		Example: `
+Apply a resource from file
+$ kumactl apply -f resource.yaml
+
+Apply a resource from stdin
+$ echo "
+type: Mesh
+name: demo
+" | kumactl apply -f -
+
+Apply a resource from external URL
+$ kumactl apply -f https://example.com/resource.yaml
+`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var b []byte
 			var err error
 
-			if ctx.args.file == "" || ctx.args.file == "-" {
+			if ctx.args.file == "-" {
 				b, err = ioutil.ReadAll(cmd.InOrStdin())
 				if err != nil {
 					return err
@@ -85,80 +96,53 @@ func NewApplyCmd(pctx *kumactl_cmd.RootContext) *cobra.Command {
 					}
 				}
 			}
-
-			configBytes, err := processConfigTemplate(string(b), ctx.args.vars)
-			if err != nil {
-				return errors.Wrap(err, "error compiling config from template")
+			if len(b) == 0 {
+				return fmt.Errorf("no resource(s) passed to apply")
 			}
-
-			res, err := parseResource(configBytes)
-			if err != nil {
-				return errors.Wrap(err, "YAML contains invalid resource")
-			}
-
-			if ctx.args.dryRun {
-				p, err := printers.NewGenericPrinter(output.YAMLFormat)
+			var resources []model.Resource
+			rawResources := strings.Split(string(b), "---")
+			for _, rawResource := range rawResources {
+				if len(rawResource) == 0 {
+					continue
+				}
+				bytes := template.Render(rawResource, ctx.args.vars)
+				res, err := rest.UnmarshallToCore(bytes)
 				if err != nil {
-					return err
+					return errors.Wrap(err, "YAML contains invalid resource")
 				}
-				if err := p.Print(rest_types.From.Resource(res), cmd.OutOrStdout()); err != nil {
-					return err
+				if err := mesh.ValidateMeta(res.GetMeta().GetName(), res.GetMeta().GetMesh(), res.Scope()); err.HasViolations() {
+					return err.OrNil()
 				}
-				return nil
+				resources = append(resources, res)
 			}
+			for _, resource := range resources {
+				if ctx.args.dryRun {
+					p, err := printers.NewGenericPrinter(output.YAMLFormat)
+					if err != nil {
+						return err
+					}
+					if err := p.Print(rest_types.From.Resource(resource), cmd.OutOrStdout()); err != nil {
+						return err
+					}
+				} else {
+					rs, err := pctx.CurrentResourceStore()
+					if err != nil {
+						return err
+					}
 
-			var rs store.ResourceStore
-			if res.GetType() == system.SecretType { // Secret is exposed via Admin Server. It will be merged into API Server eventually.
-				rs, err = pctx.CurrentAdminResourceStore()
-			} else {
-				rs, err = pctx.CurrentResourceStore()
-			}
-			if err != nil {
-				return err
-			}
-
-			if err := upsert(rs, res); err != nil {
-				return err
+					if err := upsert(rs, resource); err != nil {
+						return err
+					}
+				}
 			}
 			return nil
 		},
 	}
-	cmd.PersistentFlags().StringVarP(&ctx.args.file, "file", "f", "", "Path to file to apply")
-	cmd.PersistentFlags().StringToStringVarP(&ctx.args.vars, "var", "v", map[string]string{}, "Variable to replace in configuration")
-	cmd.PersistentFlags().BoolVar(&ctx.args.dryRun, "dry-run", false, "Resolve variable and prints result out without actual applying")
+	cmd.Flags().StringVarP(&ctx.args.file, "file", "f", "", "Path to file to apply. Pass `-` to read from stdin")
+	_ = cmd.MarkFlagRequired("file")
+	cmd.Flags().StringToStringVarP(&ctx.args.vars, "var", "v", map[string]string{}, "Variable to replace in configuration")
+	cmd.Flags().BoolVar(&ctx.args.dryRun, "dry-run", false, "Resolve variable and prints result out without actual applying")
 	return cmd
-}
-
-type contextMap map[string]interface{}
-
-func (cm contextMap) merge(other contextMap) {
-	for k, v := range other {
-		cm[k] = v
-	}
-}
-
-func newContextMap(key, value string) contextMap {
-	if !strings.Contains(key, ".") {
-		return map[string]interface{}{
-			key: value,
-		}
-	}
-
-	parts := strings.SplitAfterN(key, ".", 2)
-	return map[string]interface{}{
-		parts[0][:len(parts[0])-1]: newContextMap(parts[1], value),
-	}
-}
-
-func processConfigTemplate(config string, values map[string]string) ([]byte, error) {
-	// TODO error checking -- match number of placeholders with number of
-	// passed values
-	ctx := contextMap{}
-	for k, v := range values {
-		ctx.merge(newContextMap(k, v))
-	}
-	data := mustache.Render(config, ctx)
-	return []byte(data), nil
 }
 
 func upsert(rs store.ResourceStore, res model.Resource) error {
@@ -178,60 +162,4 @@ func upsert(rs store.ResourceStore, res model.Resource) error {
 		return err
 	}
 	return rs.Update(context.Background(), newRes)
-}
-
-func parseResource(bytes []byte) (model.Resource, error) {
-	resMeta := rest.ResourceMeta{}
-	if err := yaml.Unmarshal(bytes, &resMeta); err != nil {
-		return nil, err
-	}
-	if resMeta.Name == "" {
-		return nil, errors.New("Name field cannot be empty")
-	}
-	if resMeta.Mesh == "" && resMeta.Type != string(mesh.MeshType) {
-		return nil, errors.New("Mesh field cannot be empty")
-	}
-	resource, err := registry.Global().NewObject(model.ResourceType(resMeta.Type))
-	if err != nil {
-		return nil, err
-	}
-	if err := proto.FromYAML(bytes, resource.GetSpec()); err != nil {
-		return nil, err
-	}
-	resource.SetMeta(meta{
-		Name: resMeta.Name,
-		Mesh: resMeta.Mesh,
-	})
-	return resource, nil
-}
-
-var _ model.ResourceMeta = &meta{}
-
-type meta struct {
-	Name string
-	Mesh string
-}
-
-func (m meta) GetName() string {
-	return m.Name
-}
-
-func (m meta) GetNameExtensions() model.ResourceNameExtensions {
-	return model.ResourceNameExtensionsUnsupported
-}
-
-func (m meta) GetVersion() string {
-	return ""
-}
-
-func (m meta) GetMesh() string {
-	return m.Mesh
-}
-
-func (m meta) GetCreationTime() time.Time {
-	return time.Unix(0, 0).UTC() // the date doesn't matter since it is set on server side anyways
-}
-
-func (m meta) GetModificationTime() time.Time {
-	return time.Unix(0, 0).UTC() // the date doesn't matter since it is set on server side anyways
 }

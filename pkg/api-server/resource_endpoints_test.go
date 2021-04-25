@@ -10,14 +10,17 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	api_server "github.com/Kong/kuma/pkg/api-server"
-	config "github.com/Kong/kuma/pkg/config/api-server"
-	mesh_res "github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	"github.com/Kong/kuma/pkg/core/resources/model/rest"
-	"github.com/Kong/kuma/pkg/core/resources/store"
-	"github.com/Kong/kuma/pkg/plugins/resources/memory"
-	sample_proto "github.com/Kong/kuma/pkg/test/apis/sample/v1alpha1"
-	sample_model "github.com/Kong/kuma/pkg/test/resources/apis/sample"
+	api_server "github.com/kumahq/kuma/pkg/api-server"
+	config "github.com/kumahq/kuma/pkg/config/api-server"
+	mesh_res "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
+	"github.com/kumahq/kuma/pkg/core/resources/model/rest"
+	"github.com/kumahq/kuma/pkg/core/resources/store"
+	core_metrics "github.com/kumahq/kuma/pkg/metrics"
+	"github.com/kumahq/kuma/pkg/plugins/resources/memory"
+	sample_proto "github.com/kumahq/kuma/pkg/test/apis/sample/v1alpha1"
+	test_metrics "github.com/kumahq/kuma/pkg/test/metrics"
+	sample_model "github.com/kumahq/kuma/pkg/test/resources/apis/sample"
 )
 
 var _ = Describe("Resource Endpoints", func() {
@@ -25,16 +28,17 @@ var _ = Describe("Resource Endpoints", func() {
 	var resourceStore store.ResourceStore
 	var client resourceApiClient
 	var stop chan struct{}
+	var metrics core_metrics.Metrics
 
 	const mesh = "default"
 
-	const publicApiServerUrl = "http://kuma.internal:1234" // for pagination test
-
 	BeforeEach(func() {
-		resourceStore = memory.NewStore()
+		resourceStore = store.NewPaginationStore(memory.NewStore())
 		serverConfig := config.DefaultApiServerConfig()
-		serverConfig.Catalog.ApiServer.Url = publicApiServerUrl
-		apiServer = createTestApiServer(resourceStore, serverConfig)
+		m, err := core_metrics.NewMetrics("Standalone")
+		metrics = m
+		Expect(err).ToNot(HaveOccurred())
+		apiServer = createTestApiServer(resourceStore, serverConfig, true, metrics)
 		client = resourceApiClient{
 			address: apiServer.Address(),
 			path:    "/meshes/" + mesh + "/sample-traffic-routes",
@@ -54,7 +58,7 @@ var _ = Describe("Resource Endpoints", func() {
 
 	BeforeEach(func() {
 		// create default mesh
-		err := resourceStore.Create(context.Background(), &mesh_res.MeshResource{}, store.CreateByKey(mesh, mesh))
+		err := resourceStore.Create(context.Background(), mesh_res.NewMeshResource(), store.CreateByKey(mesh, model.NoMesh))
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -131,8 +135,8 @@ var _ = Describe("Resource Endpoints", func() {
 			body, err := ioutil.ReadAll(response.Body)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(body).To(Or(
-				MatchJSON(fmt.Sprintf(`{"items": [%s,%s], "next": null}`, json1, json2)),
-				MatchJSON(fmt.Sprintf(`{"items": [%s,%s]}, "next": null`, json2, json1)),
+				MatchJSON(fmt.Sprintf(`{"total": %d, "items": [%s,%s], "next": null}`, 2, json1, json2)),
+				MatchJSON(fmt.Sprintf(`{"total": %d, "items": [%s,%s], "next": null}`, 2, json2, json1)),
 			))
 		})
 
@@ -171,8 +175,8 @@ var _ = Describe("Resource Endpoints", func() {
 			body, err := ioutil.ReadAll(response.Body)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(body).To(Or(
-				MatchJSON(fmt.Sprintf(`{"items": [%s,%s], "next": null}`, json1, json2)),
-				MatchJSON(fmt.Sprintf(`{"items": [%s,%s], "next": null}`, json2, json1)),
+				MatchJSON(fmt.Sprintf(`{"total": %d, "items": [%s,%s], "next": null}`, 2, json1, json2)),
+				MatchJSON(fmt.Sprintf(`{"total": %d, "items": [%s,%s], "next": null}`, 2, json2, json1)),
 			))
 		})
 
@@ -193,6 +197,7 @@ var _ = Describe("Resource Endpoints", func() {
 			Expect(response.StatusCode).To(Equal(200))
 			json := fmt.Sprintf(`
 			{
+				"total": 3,
 				"items": [
 					{
 						"type": "SampleTrafficRoute",
@@ -211,8 +216,8 @@ var _ = Describe("Resource Endpoints", func() {
 						"path": "/sample-path"
 					}
 				],
-				"next": "%s/sample-traffic-routes?offset=2&size=2"
-			}`, publicApiServerUrl)
+				"next": "http://%s/sample-traffic-routes?offset=2&size=2"
+			}`, client.address)
 			body, err := ioutil.ReadAll(response.Body)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(body).To(MatchJSON(json))
@@ -228,6 +233,7 @@ var _ = Describe("Resource Endpoints", func() {
 			Expect(response.StatusCode).To(Equal(200))
 			json = `
 			{
+				"total": 3,
 				"items": [
 					{
 						"type": "SampleTrafficRoute",
@@ -368,8 +374,8 @@ var _ = Describe("Resource Endpoints", func() {
 			Expect(response.StatusCode).To(Equal(200))
 
 			// then
-			resource := sample_model.TrafficRouteResource{}
-			err := resourceStore.Get(context.Background(), &resource, store.GetByKey(name, mesh))
+			resource := sample_model.NewTrafficRouteResource()
+			err := resourceStore.Get(context.Background(), resource, store.GetByKey(name, mesh))
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resource.Spec.Path).To(Equal("/update-sample-path"))
 		})
@@ -557,7 +563,7 @@ var _ = Describe("Resource Endpoints", func() {
 
 		It("should return 400 when mesh does not exist", func() {
 			// setup
-			err := resourceStore.Delete(context.Background(), &mesh_res.MeshResource{}, store.DeleteByKey("default", "default"))
+			err := resourceStore.Delete(context.Background(), mesh_res.NewMeshResource(), store.DeleteByKey(model.DefaultMesh, model.NoMesh))
 			Expect(err).ToNot(HaveOccurred())
 
 			// given
@@ -608,8 +614,8 @@ var _ = Describe("Resource Endpoints", func() {
 			Expect(response.StatusCode).To(Equal(200))
 
 			// and
-			resource := sample_model.TrafficRouteResource{}
-			err := resourceStore.Get(context.Background(), &resource, store.GetByKey(name, mesh))
+			resource := sample_model.NewTrafficRouteResource()
+			err := resourceStore.Get(context.Background(), resource, store.GetByKey(name, mesh))
 			Expect(err).To(Equal(store.ErrorResourceNotFound(resource.GetType(), name, mesh)))
 		})
 
@@ -633,7 +639,7 @@ var _ = Describe("Resource Endpoints", func() {
 	})
 
 	It("should support CORS", func() {
-		// when
+		// given
 		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/meshes/%s/sample-traffic-routes", apiServer.Address(), mesh), nil)
 		Expect(err).NotTo(HaveOccurred())
 		req.Header.Add(restful.HEADER_Origin, "test")
@@ -649,5 +655,20 @@ var _ = Describe("Resource Endpoints", func() {
 
 		// then server returns that the domain is allowed
 		Expect(value).To(Equal("test"))
+	})
+
+	It("should expose metrics", func() {
+		// given
+		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/meshes/%s/sample-traffic-routes", apiServer.Address(), mesh), nil)
+		Expect(err).NotTo(HaveOccurred())
+
+		// when
+		_, err = http.DefaultClient.Do(req)
+
+		// then
+		Expect(err).NotTo(HaveOccurred())
+		Expect(test_metrics.FindMetric(metrics, "api_server_http_request_duration_seconds")).ToNot(BeNil())
+		Expect(test_metrics.FindMetric(metrics, "api_server_http_requests_inflight")).ToNot(BeNil())
+		Expect(test_metrics.FindMetric(metrics, "api_server_http_response_size_bytes")).ToNot(BeNil())
 	})
 })

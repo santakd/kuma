@@ -3,10 +3,10 @@ package mesh
 import (
 	"errors"
 
-	"github.com/Kong/kuma/pkg/core/resources/registry"
+	"github.com/kumahq/kuma/pkg/core/resources/registry"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	"github.com/Kong/kuma/pkg/core/resources/model"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
 )
 
 const (
@@ -17,7 +17,13 @@ var _ model.Resource = &FaultInjectionResource{}
 
 type FaultInjectionResource struct {
 	Meta model.ResourceMeta
-	Spec mesh_proto.FaultInjection
+	Spec *mesh_proto.FaultInjection
+}
+
+func NewFaultInjectionResource() *FaultInjectionResource {
+	return &FaultInjectionResource{
+		Spec: &mesh_proto.FaultInjection{},
+	}
 }
 
 func (f *FaultInjectionResource) GetType() model.ResourceType {
@@ -33,7 +39,7 @@ func (f *FaultInjectionResource) SetMeta(m model.ResourceMeta) {
 }
 
 func (f *FaultInjectionResource) GetSpec() model.ResourceSpec {
-	return &f.Spec
+	return f.Spec
 }
 
 func (f *FaultInjectionResource) SetSpec(spec model.ResourceSpec) error {
@@ -41,9 +47,13 @@ func (f *FaultInjectionResource) SetSpec(spec model.ResourceSpec) error {
 	if !ok {
 		return errors.New("invalid type of spec")
 	} else {
-		f.Spec = *faultInjection
+		f.Spec = faultInjection
 		return nil
 	}
+}
+
+func (f *FaultInjectionResource) Scope() model.ResourceScope {
+	return model.ScopeMesh
 }
 
 var _ model.ResourceList = &FaultInjectionResourceList{}
@@ -66,7 +76,7 @@ func (l *FaultInjectionResourceList) GetItemType() model.ResourceType {
 }
 
 func (l *FaultInjectionResourceList) NewItem() model.Resource {
-	return &FaultInjectionResource{}
+	return NewFaultInjectionResource()
 }
 
 func (l *FaultInjectionResourceList) AddItem(r model.Resource) error {
@@ -78,16 +88,12 @@ func (l *FaultInjectionResourceList) AddItem(r model.Resource) error {
 	}
 }
 
-func (l *FaultInjectionResourceList) GetPagination() model.Pagination {
-	return l.Pagination
-}
-
-func (l *FaultInjectionResourceList) SetPagination(pagination model.Pagination) {
-	l.Pagination = pagination
+func (l *FaultInjectionResourceList) GetPagination() *model.Pagination {
+	return &l.Pagination
 }
 
 func init() {
-	registry.RegisterType(&FaultInjectionResource{})
+	registry.RegisterType(NewFaultInjectionResource())
 	registry.RegistryListType(&FaultInjectionResourceList{})
 }
 

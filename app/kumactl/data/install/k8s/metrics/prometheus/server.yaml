@@ -259,6 +259,15 @@ data:
       scrape_timeout: 30s
     - job_name: 'kuma-dataplanes'
       scrape_interval: "5s"
+      relabel_configs:
+      - source_labels:
+        - k8s_kuma_io_name
+        regex: "(.*)"
+        target_label: pod
+      - source_labels:
+        - k8s_kuma_io_namespace
+        regex: "(.*)"
+        target_label: namespace
       file_sd_configs:
       - files:
         - /var/run/kuma.io/prometheus-sd/kuma.file_sd.json
@@ -406,11 +415,13 @@ spec:
       labels:
         component: "server"
         app: prometheus
+      annotations:
+        kuma.io/direct-access-services: "*"
     spec:
       serviceAccountName: prometheus-server
       containers:
         - name: prometheus-server-configmap-reload
-          image: "jimmidyson/configmap-reload:v0.3.0"
+          image: "jimmidyson/configmap-reload:v0.5.0"
           imagePullPolicy: "IfNotPresent"
           args:
             - --volume-dir=/etc/config
@@ -422,7 +433,7 @@ spec:
               mountPath: /etc/config
               readOnly: true
         - name: prometheus-server
-          image: "prom/prometheus:v2.15.2"
+          image: "prom/prometheus:v2.25.0"
           imagePullPolicy: "IfNotPresent"
           args:
             - --storage.tsdb.retention.time=15d
@@ -433,22 +444,6 @@ spec:
             - --web.enable-lifecycle
           ports:
             - containerPort: 9090
-          readinessProbe:
-            httpGet:
-              path: /-/ready
-              port: 9090
-            initialDelaySeconds: 30
-            timeoutSeconds: 30
-            failureThreshold: 3
-            successThreshold: 1
-          livenessProbe:
-            httpGet:
-              path: /-/healthy
-              port: 9090
-            initialDelaySeconds: 30
-            timeoutSeconds: 30
-            failureThreshold: 3
-            successThreshold: 1
           resources:
             {}
           volumeMounts:
@@ -473,7 +468,6 @@ spec:
       securityContext:
         fsGroup: 65534
         runAsGroup: 65534
-        runAsNonRoot: true
         runAsUser: 65534
       terminationGracePeriodSeconds: 300
       volumes:

@@ -3,9 +3,9 @@ package mesh
 import (
 	"errors"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	"github.com/Kong/kuma/pkg/core/resources/model"
-	"github.com/Kong/kuma/pkg/core/resources/registry"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
+	"github.com/kumahq/kuma/pkg/core/resources/registry"
 )
 
 const (
@@ -16,7 +16,13 @@ var _ model.Resource = &ProxyTemplateResource{}
 
 type ProxyTemplateResource struct {
 	Meta model.ResourceMeta
-	Spec mesh_proto.ProxyTemplate
+	Spec *mesh_proto.ProxyTemplate
+}
+
+func NewProxyTemplateResource() *ProxyTemplateResource {
+	return &ProxyTemplateResource{
+		Spec: &mesh_proto.ProxyTemplate{},
+	}
 }
 
 func (t *ProxyTemplateResource) GetType() model.ResourceType {
@@ -29,16 +35,19 @@ func (t *ProxyTemplateResource) SetMeta(m model.ResourceMeta) {
 	t.Meta = m
 }
 func (t *ProxyTemplateResource) GetSpec() model.ResourceSpec {
-	return &t.Spec
+	return t.Spec
 }
 func (t *ProxyTemplateResource) SetSpec(spec model.ResourceSpec) error {
 	template, ok := spec.(*mesh_proto.ProxyTemplate)
 	if !ok {
 		return errors.New("invalid type of spec")
 	} else {
-		t.Spec = *template
+		t.Spec = template
 		return nil
 	}
+}
+func (t *ProxyTemplateResource) Scope() model.ResourceScope {
+	return model.ScopeMesh
 }
 
 var _ model.ResourceList = &ProxyTemplateResourceList{}
@@ -59,7 +68,7 @@ func (l *ProxyTemplateResourceList) GetItemType() model.ResourceType {
 	return ProxyTemplateType
 }
 func (l *ProxyTemplateResourceList) NewItem() model.Resource {
-	return &ProxyTemplateResource{}
+	return NewProxyTemplateResource()
 }
 func (l *ProxyTemplateResourceList) AddItem(r model.Resource) error {
 	if trr, ok := r.(*ProxyTemplateResource); ok {
@@ -69,15 +78,12 @@ func (l *ProxyTemplateResourceList) AddItem(r model.Resource) error {
 		return model.ErrorInvalidItemType((*ProxyTemplateResource)(nil), r)
 	}
 }
-func (l *ProxyTemplateResourceList) GetPagination() model.Pagination {
-	return l.Pagination
-}
-func (l *ProxyTemplateResourceList) SetPagination(pagination model.Pagination) {
-	l.Pagination = pagination
+func (l *ProxyTemplateResourceList) GetPagination() *model.Pagination {
+	return &l.Pagination
 }
 
 func init() {
-	registry.RegisterType(&ProxyTemplateResource{})
+	registry.RegisterType(NewProxyTemplateResource())
 	registry.RegistryListType(&ProxyTemplateResourceList{})
 }
 

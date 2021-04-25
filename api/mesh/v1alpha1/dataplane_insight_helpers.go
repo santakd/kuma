@@ -1,9 +1,9 @@
 package v1alpha1
 
 import (
+	"strings"
 	"time"
 
-	envoy_resource "github.com/envoyproxy/go-control-plane/pkg/resource/v2"
 	"github.com/golang/protobuf/ptypes"
 )
 
@@ -14,6 +14,21 @@ func NewSubscriptionStatus() *DiscoverySubscriptionStatus {
 		Eds:   &DiscoveryServiceStats{},
 		Lds:   &DiscoveryServiceStats{},
 		Rds:   &DiscoveryServiceStats{},
+	}
+}
+
+func NewVersion() *Version {
+	return &Version{
+		KumaDp: &KumaDpVersion{
+			Version:   "",
+			GitTag:    "",
+			GitCommit: "",
+			BuildDate: "",
+		},
+		Envoy: &EnvoyVersion{
+			Version: "",
+			Build:   "",
+		},
 	}
 }
 
@@ -33,6 +48,24 @@ func (ds *DataplaneInsight) GetSubscription(id string) (int, *DiscoverySubscript
 		}
 	}
 	return -1, nil
+}
+
+func (ds *DataplaneInsight) UpdateCert(generation time.Time, expiration time.Time) error {
+	if ds.MTLS == nil {
+		ds.MTLS = &DataplaneInsight_MTLS{}
+	}
+	ts, err := ptypes.TimestampProto(expiration)
+	if err != nil {
+		return err
+	}
+	ds.MTLS.CertificateExpirationTime = ts
+	ds.MTLS.CertificateRegenerations++
+	ts, err = ptypes.TimestampProto(generation)
+	if err != nil {
+		return err
+	}
+	ds.MTLS.LastCertificateRegeneration = ts
+	return nil
 }
 
 func (ds *DataplaneInsight) UpdateSubscription(s *DiscoverySubscription) {
@@ -78,23 +111,24 @@ func (s *DiscoverySubscriptionStatus) StatsOf(typeUrl string) *DiscoveryServiceS
 	if s == nil {
 		return &DiscoveryServiceStats{}
 	}
-	switch typeUrl {
-	case envoy_resource.ClusterType:
+	// we rely on type URL suffix to get rid of the dependency on concrete V2 / V3 implementation
+	switch {
+	case strings.HasSuffix(typeUrl, "Cluster"):
 		if s.Cds == nil {
 			s.Cds = &DiscoveryServiceStats{}
 		}
 		return s.Cds
-	case envoy_resource.EndpointType:
+	case strings.HasSuffix(typeUrl, "ClusterLoadAssignment"):
 		if s.Eds == nil {
 			s.Eds = &DiscoveryServiceStats{}
 		}
 		return s.Eds
-	case envoy_resource.ListenerType:
+	case strings.HasSuffix(typeUrl, "Listener"):
 		if s.Lds == nil {
 			s.Lds = &DiscoveryServiceStats{}
 		}
 		return s.Lds
-	case envoy_resource.RouteType:
+	case strings.HasSuffix(typeUrl, "RouteConfiguration"):
 		if s.Rds == nil {
 			s.Rds = &DiscoveryServiceStats{}
 		}

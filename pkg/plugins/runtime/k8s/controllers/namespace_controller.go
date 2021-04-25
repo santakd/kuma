@@ -3,27 +3,24 @@ package controllers
 import (
 	"context"
 
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	kube_core "k8s.io/api/core/v1"
 	kube_apierrs "k8s.io/apimachinery/pkg/api/errors"
 	kube_meta "k8s.io/apimachinery/pkg/apis/meta/v1"
-	kube_types "k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/types"
 	kube_ctrl "sigs.k8s.io/controller-runtime"
 	kube_client "sigs.k8s.io/controller-runtime/pkg/client"
 	kube_controllerutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	kube_handler "sigs.k8s.io/controller-runtime/pkg/handler"
-	kube_reconcile "sigs.k8s.io/controller-runtime/pkg/reconcile"
-	kube_source "sigs.k8s.io/controller-runtime/pkg/source"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	mesh_managers "github.com/Kong/kuma/pkg/core/managers/apis/mesh"
-	core_manager "github.com/Kong/kuma/pkg/core/resources/manager"
-	core_model "github.com/Kong/kuma/pkg/core/resources/model"
-	mesh_k8s "github.com/Kong/kuma/pkg/plugins/resources/k8s/native/api/v1alpha1"
-	k8scnicncfio "github.com/Kong/kuma/pkg/plugins/runtime/k8s/apis/k8s.cni.cncf.io"
-	network_v1 "github.com/Kong/kuma/pkg/plugins/runtime/k8s/apis/k8s.cni.cncf.io/v1"
-	"github.com/Kong/kuma/pkg/plugins/runtime/k8s/webhooks/injector/metadata"
+	k8scnicncfio "github.com/kumahq/kuma/pkg/plugins/runtime/k8s/apis/k8s.cni.cncf.io"
+	network_v1 "github.com/kumahq/kuma/pkg/plugins/runtime/k8s/apis/k8s.cni.cncf.io/v1"
+	"github.com/kumahq/kuma/pkg/plugins/runtime/k8s/metadata"
 )
 
 // NamespaceReconciler reconciles a Namespace object
@@ -31,56 +28,67 @@ type NamespaceReconciler struct {
 	kube_client.Client
 	Log logr.Logger
 
-	SystemNamespace     string
-	CNIEnabled          bool
-	ResourceManager     core_manager.ResourceManager
-	DefaultMeshTemplate mesh_proto.Mesh
+	CNIEnabled bool
 }
 
-// Reconcile is in charge for two things:
-//   - create NetworkAttachmentDefinition if CNI enabled and namespace has label 'kuma.io/sidecar-injection: enabled'
-//   - create 'default' mesh for cluster
+// Reconcile is in charge of creating NetworkAttachmentDefinition if CNI enabled and namespace has label 'kuma.io/sidecar-injection: enabled'
 func (r *NamespaceReconciler) Reconcile(req kube_ctrl.Request) (kube_ctrl.Result, error) {
-	if !r.CNIEnabled && req.Name != r.SystemNamespace {
+	if !r.CNIEnabled {
 		return kube_ctrl.Result{}, nil
 	}
 	log := r.Log.WithValues("namespace", req.Name)
 	ctx := context.Background()
 
-	// Fetch the Namespace instance
+	hasNAD, err := r.hasNetworkAttachmentDefinition()
+	if err != nil {
+		return kube_ctrl.Result{}, err
+	}
+
+	if !hasNAD {
+		log.V(1).Info("network-attachment-definitions.k8s.cni.cncf.io not found")
+		return kube_ctrl.Result{}, nil
+	}
+
 	ns := &kube_core.Namespace{}
 	if err := r.Get(ctx, req.NamespacedName, ns); err != nil {
 		if kube_apierrs.IsNotFound(err) {
 			return kube_ctrl.Result{}, nil
 		}
-		log.Error(err, "unable to fetch Namespace")
+		return kube_ctrl.Result{}, errors.Wrapf(err, "unable to fetch Namespace %s", req.NamespacedName.Name)
+	}
+
+	if ns.Status.Phase == kube_core.NamespaceTerminating {
+		// we should not try to create or delete resources on namespace with Terminating state, it will result in errors
+		log.V(1).Info("namespace is Terminating")
+		return kube_ctrl.Result{}, nil
+	}
+
+	injected, _, err := metadata.Annotations(ns.Annotations).GetEnabled(metadata.KumaSidecarInjectionAnnotation)
+	if err != nil {
+		return kube_ctrl.Result{}, errors.Wrapf(err, "unable to check sidecar injection annotation on namespace %s", ns.Name)
+	}
+	if injected {
+		log.Info("creating NetworkAttachmentDefinition for CNI support")
+		err := r.createOrUpdateNetworkAttachmentDefinition(req.Name)
+		return kube_ctrl.Result{}, err
+	} else {
+		// either a namespace that just had its kuma.io/sidecar-injection annotation removed or a namespace that never had this annotation
+		err := r.deleteNetworkAttachmentDefinition(log, req.Name)
 		return kube_ctrl.Result{}, err
 	}
+}
 
-	if req.Name == r.SystemNamespace {
-		// Fetch default Mesh instance
-		mesh := &mesh_k8s.Mesh{}
-		name := kube_types.NamespacedName{Name: core_model.DefaultMesh}
-		if err := r.Get(ctx, name, mesh); err != nil {
-			if kube_apierrs.IsNotFound(err) {
-				err := mesh_managers.CreateDefaultMesh(r.ResourceManager, r.DefaultMeshTemplate)
-				if err != nil {
-					log.Error(err, "unable to create default Mesh")
-				}
-				return kube_ctrl.Result{}, err
-			}
-			log.Error(err, "unable to fetch Mesh", "name", name)
-			return kube_ctrl.Result{}, err
+func (r *NamespaceReconciler) hasNetworkAttachmentDefinition() (bool, error) {
+	crd := apiextensionsv1.CustomResourceDefinition{}
+	err := r.Client.Get(context.Background(), kube_client.ObjectKey{Name: "network-attachment-definitions.k8s.cni.cncf.io"}, &crd)
+	if err != nil {
+		if kube_apierrs.IsNotFound(err) {
+			return false, nil
 		}
+		return false, errors.Wrap(err, "could not get network-attachment-definitions.k8s.cni.cncf.io")
 	}
 
-	if r.CNIEnabled {
-		if label, ok := ns.Labels["kuma.io/sidecar-injection"]; ok && label == "enabled" {
-			err := r.createOrUpdateNetworkAttachmentDefinition(req.Name)
-			return kube_ctrl.Result{}, err
-		}
-	}
-	return kube_ctrl.Result{}, nil
+	return true, nil
 }
 
 func (r *NamespaceReconciler) createOrUpdateNetworkAttachmentDefinition(namespace string) error {
@@ -97,25 +105,51 @@ func (r *NamespaceReconciler) createOrUpdateNetworkAttachmentDefinition(namespac
 	return err
 }
 
+func (r *NamespaceReconciler) deleteNetworkAttachmentDefinition(log logr.Logger, namespace string) error {
+	nad := &network_v1.NetworkAttachmentDefinition{}
+	key := types.NamespacedName{
+		Namespace: namespace,
+		Name:      metadata.KumaCNI,
+	}
+	err := r.Client.Get(context.Background(), key, nad)
+	switch {
+	case err == nil:
+		log.Info("deleting NetworkAttachmentDefinition")
+		return r.Client.Delete(context.Background(), nad)
+	case kube_apierrs.IsNotFound(err): // it means that namespace never had Kuma injected
+		return nil
+	default:
+		return errors.Wrap(err, "could not fetch NetworkAttachmentDefinition")
+	}
+}
+
 func (r *NamespaceReconciler) SetupWithManager(mgr kube_ctrl.Manager) error {
 	if err := kube_core.AddToScheme(mgr.GetScheme()); err != nil {
 		return errors.Wrapf(err, "could not add %q to scheme", kube_core.SchemeGroupVersion)
 	}
-	if err := mesh_k8s.AddToScheme(mgr.GetScheme()); err != nil {
-		return errors.Wrapf(err, "could not add %q to scheme", mesh_k8s.GroupVersion)
-	}
 	if err := k8scnicncfio.AddToScheme(mgr.GetScheme()); err != nil {
 		return errors.Wrapf(err, "could not add %q to scheme", k8scnicncfio.GroupVersion)
 	}
+	if err := apiextensionsv1.AddToScheme(mgr.GetScheme()); err != nil {
+		return errors.Wrapf(err, "could not add %q to scheme", apiextensionsv1.SchemeGroupVersion)
+	}
 	return kube_ctrl.NewControllerManagedBy(mgr).
-		For(&kube_core.Namespace{}).
-		// on Mesh update reconcile Namespace it belongs to (in case default Mesh gets deleted)
-		Watches(&kube_source.Kind{Type: &mesh_k8s.Mesh{}}, &kube_handler.EnqueueRequestsFromMapFunc{
-			ToRequests: kube_handler.ToRequestsFunc(func(obj kube_handler.MapObject) []kube_reconcile.Request {
-				return []kube_reconcile.Request{{
-					NamespacedName: kube_types.NamespacedName{Name: obj.Meta.GetNamespace()},
-				}}
-			}),
-		}).
+		For(&kube_core.Namespace{}, builder.WithPredicates(namespaceEvents)).
 		Complete(r)
+}
+
+// we only want create and update events
+var namespaceEvents = predicate.Funcs{
+	CreateFunc: func(event event.CreateEvent) bool {
+		return true
+	},
+	DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
+		return false
+	},
+	UpdateFunc: func(updateEvent event.UpdateEvent) bool {
+		return true
+	},
+	GenericFunc: func(genericEvent event.GenericEvent) bool {
+		return false
+	},
 }

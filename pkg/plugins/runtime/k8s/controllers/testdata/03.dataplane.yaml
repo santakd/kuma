@@ -1,0 +1,13 @@
+mesh: default
+metadata:
+  creationTimestamp: null
+spec:
+  networking:
+    address: 192.168.0.1
+    gateway:
+      tags:
+        app: example
+        kuma.io/service: example_demo_svc_80
+        kuma.io/protocol: tcp
+        version: "0.1"
+        kuma.io/zone: "zone-1"

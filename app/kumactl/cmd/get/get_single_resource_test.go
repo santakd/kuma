@@ -3,33 +3,42 @@ package get_test
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"path/filepath"
-	"strings"
 	"time"
-
-	"github.com/Kong/kuma/pkg/catalog"
-	catalog_client "github.com/Kong/kuma/pkg/catalog/client"
-	test_catalog "github.com/Kong/kuma/pkg/test/catalog"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
 
-	"github.com/Kong/kuma/app/kumactl/cmd"
-	kumactl_cmd "github.com/Kong/kuma/app/kumactl/pkg/cmd"
-	config_proto "github.com/Kong/kuma/pkg/config/app/kumactl/v1alpha1"
-	core_store "github.com/Kong/kuma/pkg/core/resources/store"
-	memory_resources "github.com/Kong/kuma/pkg/plugins/resources/memory"
+	"github.com/kumahq/kuma/app/kumactl/cmd"
+	kumactl_cmd "github.com/kumahq/kuma/app/kumactl/pkg/cmd"
+	"github.com/kumahq/kuma/app/kumactl/pkg/resources"
+	"github.com/kumahq/kuma/pkg/api-server/types"
+	config_proto "github.com/kumahq/kuma/pkg/config/app/kumactl/v1alpha1"
+	core_store "github.com/kumahq/kuma/pkg/core/resources/store"
+	memory_resources "github.com/kumahq/kuma/pkg/plugins/resources/memory"
+	. "github.com/kumahq/kuma/pkg/test/matchers"
+	kuma_version "github.com/kumahq/kuma/pkg/version"
 )
+
+type testApiServerClient struct {
+}
+
+func (c *testApiServerClient) GetVersion() (*types.IndexResponse, error) {
+	return &types.IndexResponse{
+		Version: kuma_version.Build.Version,
+	}, nil
+}
 
 var _ = Describe("kumactl get [resource] NAME", func() {
 	var rootCtx *kumactl_cmd.RootContext
 	var rootCmd *cobra.Command
 	var outbuf, errbuf *bytes.Buffer
 	var store core_store.ResourceStore
+	var testClient *testApiServerClient
 	rootTime, _ := time.Parse(time.RFC3339, "2008-04-01T16:05:36.995Z")
+	var _ resources.ApiServerClient = &testApiServerClient{}
 	BeforeEach(func() {
 		rootCtx = &kumactl_cmd.RootContext{
 			Runtime: kumactl_cmd.RootRuntime{
@@ -37,23 +46,12 @@ var _ = Describe("kumactl get [resource] NAME", func() {
 				NewResourceStore: func(*config_proto.ControlPlaneCoordinates_ApiServer) (core_store.ResourceStore, error) {
 					return store, nil
 				},
-				NewAdminResourceStore: func(string, *config_proto.Context_AdminApiCredentials) (core_store.ResourceStore, error) {
-					return store, nil
-				},
-				NewCatalogClient: func(s string) (catalog_client.CatalogClient, error) {
-					return &test_catalog.StaticCatalogClient{
-						Resp: catalog.Catalog{
-							Apis: catalog.Apis{
-								DataplaneToken: catalog.DataplaneTokenApi{
-									LocalUrl: "http://localhost:1234",
-								},
-							},
-						},
-					}, nil
+				NewAPIServerClient: func(*config_proto.ControlPlaneCoordinates_ApiServer) (resources.ApiServerClient, error) {
+					return testClient, nil
 				},
 			},
 		}
-		store = memory_resources.NewStore()
+		store = core_store.NewPaginationStore(memory_resources.NewStore())
 		rootCmd = cmd.NewRootCmd(rootCtx)
 		outbuf = &bytes.Buffer{}
 		errbuf = &bytes.Buffer{}
@@ -62,6 +60,7 @@ var _ = Describe("kumactl get [resource] NAME", func() {
 	})
 
 	entries := []TableEntry{
+		Entry("circuit-breaker", "circuit-breaker"),
 		Entry("fault-injection", "fault-injection"),
 		Entry("dataplane", "dataplane"),
 		Entry("mesh", "mesh"),
@@ -72,6 +71,8 @@ var _ = Describe("kumactl get [resource] NAME", func() {
 		Entry("traffic-route", "traffic-route"),
 		Entry("traffic-trace", "traffic-trace"),
 		Entry("secret", "secret"),
+		Entry("global-secret", "global-secret"),
+		Entry("retry", "retry"),
 	}
 
 	DescribeTable("should throw an error in case of no args",
@@ -94,7 +95,7 @@ var _ = Describe("kumactl get [resource] NAME", func() {
 
 	DescribeTable("should return error message if doesn't exist",
 		func(resource string) {
-			//given
+			// given
 			rootCmd.SetArgs([]string{
 				"get", resource, "unknown-resource"})
 
@@ -104,8 +105,8 @@ var _ = Describe("kumactl get [resource] NAME", func() {
 			// then
 			Expect(err).To(HaveOccurred())
 			// and
-			if resource == "mesh" {
-				Expect(outbuf.String()).To(Equal("Error: No resources found in unknown-resource mesh\n"))
+			if resource == "mesh" || resource == "global-secret" {
+				Expect(outbuf.String()).To(Equal("Error: No resources found\n"))
 			} else {
 				Expect(outbuf.String()).To(Equal("Error: No resources found in default mesh\n"))
 			}
@@ -134,9 +135,7 @@ var _ = Describe("kumactl get [resource] NAME", func() {
 
 			// then
 			Expect(err).ToNot(HaveOccurred())
-			expected, err := ioutil.ReadFile(filepath.Join("testdata", resourceTable))
-			Expect(err).ToNot(HaveOccurred())
-			Expect(outbuf.String()).To(WithTransform(strings.TrimSpace, Equal(strings.TrimSpace(string(expected)))))
+			Expect(outbuf.String()).To(MatchGoldenEqual(filepath.Join("testdata", resourceTable)))
 		},
 		entries...,
 	)
@@ -159,9 +158,7 @@ var _ = Describe("kumactl get [resource] NAME", func() {
 
 			// then
 			Expect(err).ToNot(HaveOccurred())
-			expected, err := ioutil.ReadFile(filepath.Join("testdata", resourceJSON))
-			Expect(err).ToNot(HaveOccurred())
-			Expect(outbuf.String()).To(MatchJSON(expected))
+			Expect(outbuf.String()).To(MatchGoldenEqual(filepath.Join("testdata", resourceJSON)))
 		},
 		entries...,
 	)
@@ -181,9 +178,7 @@ var _ = Describe("kumactl get [resource] NAME", func() {
 
 			// then
 			Expect(err).ToNot(HaveOccurred())
-			expected, err := ioutil.ReadFile(filepath.Join("testdata", resourceYAML))
-			Expect(err).ToNot(HaveOccurred())
-			Expect(outbuf.String()).To(MatchYAML(expected))
+			Expect(outbuf.String()).To(MatchGoldenEqual(filepath.Join("testdata", resourceYAML)))
 		},
 		entries...,
 	)

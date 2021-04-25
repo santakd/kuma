@@ -1,51 +1,67 @@
 package context
 
 import (
-	"fmt"
 	"io/ioutil"
-	"net/url"
 
-	kuma_cp "github.com/Kong/kuma/pkg/config/app/kuma-cp"
-	mesh_core "github.com/Kong/kuma/pkg/core/resources/apis/mesh"
+	"github.com/kumahq/kuma/pkg/dns/resolver"
+	"github.com/kumahq/kuma/pkg/tls"
+
+	"github.com/kumahq/kuma/pkg/envoy/admin"
+
+	kuma_cp "github.com/kumahq/kuma/pkg/config/app/kuma-cp"
+	mesh_core "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	"github.com/kumahq/kuma/pkg/core/xds"
 )
 
 type Context struct {
-	ControlPlane *ControlPlaneContext
-	Mesh         MeshContext
+	ControlPlane     *ControlPlaneContext
+	Mesh             MeshContext
+	ConnectionInfo   ConnectionInfo
+	EnvoyAdminClient admin.EnvoyAdminClient
+}
+
+type ConnectionInfo struct {
+	// Authority defines the URL that was used by the data plane to connect to the control plane
+	Authority string
 }
 
 type ControlPlaneContext struct {
-	SdsLocation string
-	SdsTlsCert  []byte
+	SdsTlsCert        []byte
+	AdminProxyKeyPair *tls.KeyPair
+	CLACache          xds.CLACache
+	DNSResolver       resolver.DNSResolver
+}
+
+func (c Context) SDSLocation() string {
+	// SDS lives on the same server as XDS so we can use the URL that Dataplane used to connect to XDS
+	return c.ConnectionInfo.Authority
 }
 
 type MeshContext struct {
-	Resource *mesh_core.MeshResource
+	Resource   *mesh_core.MeshResource
+	Dataplanes *mesh_core.DataplaneResourceList
+	Hash       string
 }
 
-func BuildControlPlaneContext(config kuma_cp.Config) (*ControlPlaneContext, error) {
-	var cert []byte
-	if config.SdsServer.TlsCertFile != "" {
-		c, err := ioutil.ReadFile(config.SdsServer.TlsCertFile)
+func BuildControlPlaneContext(config kuma_cp.Config, claCache xds.CLACache, dnsResolver resolver.DNSResolver) (*ControlPlaneContext, error) {
+	var sdsCert []byte
+	if config.DpServer.TlsCertFile != "" {
+		c, err := ioutil.ReadFile(config.DpServer.TlsCertFile)
 		if err != nil {
 			return nil, err
 		}
-		cert = c
+		sdsCert = c
 	}
-	var sdsLocation = ""
-	if config.ApiServer.Catalog.Sds.Url != "" {
-		u, err := url.Parse(config.ApiServer.Catalog.Sds.Url)
-		if err != nil {
-			return nil, err
-		}
-		sdsLocation = u.Host
-	}
-	if len(sdsLocation) == 0 {
-		sdsLocation = fmt.Sprintf("%s:%d", config.BootstrapServer.Params.XdsHost, config.SdsServer.GrpcPort)
+
+	adminKeyPair, err := tls.NewSelfSignedCert("admin", tls.ServerCertType, "localhost")
+	if err != nil {
+		return nil, err
 	}
 
 	return &ControlPlaneContext{
-		SdsLocation: sdsLocation,
-		SdsTlsCert:  cert,
+		SdsTlsCert:        sdsCert,
+		AdminProxyKeyPair: &adminKeyPair,
+		CLACache:          claCache,
+		DNSResolver:       dnsResolver,
 	}, nil
 }

@@ -7,7 +7,7 @@ import (
 	"go.uber.org/multierr"
 	kube_api "k8s.io/apimachinery/pkg/api/resource"
 
-	"github.com/Kong/kuma/pkg/config"
+	"github.com/kumahq/kuma/pkg/config"
 )
 
 func DefaultKubernetesRuntimeConfig() *KubernetesRuntimeConfig {
@@ -15,15 +15,20 @@ func DefaultKubernetesRuntimeConfig() *KubernetesRuntimeConfig {
 		AdmissionServer: AdmissionServerConfig{
 			Port: 5443,
 		},
+		ControlPlaneServiceName: "kuma-control-plane",
 		Injector: Injector{
-			CNIEnabled: false,
+			CNIEnabled:           false,
+			VirtualProbesEnabled: true,
+			VirtualProbesPort:    9000,
 			SidecarContainer: SidecarContainer{
-				Image:        "kuma/kuma-dp:latest",
-				RedirectPort: 15001,
-				UID:          5678,
-				GID:          5678,
-				AdminPort:    9901,
-				DrainTime:    30 * time.Second,
+				Image:                 "kuma/kuma-dp:latest",
+				RedirectPortInbound:   15006,
+				RedirectPortInboundV6: 15010,
+				RedirectPortOutbound:  15001,
+				UID:                   5678,
+				GID:                   5678,
+				AdminPort:             9901,
+				DrainTime:             30 * time.Second,
 
 				ReadinessProbe: SidecarReadinessProbe{
 					InitialDelaySeconds: 1,
@@ -52,7 +57,23 @@ func DefaultKubernetesRuntimeConfig() *KubernetesRuntimeConfig {
 			InitContainer: InitContainer{
 				Image: "kuma/kuma-init:latest",
 			},
+			SidecarTraffic: SidecarTraffic{
+				ExcludeInboundPorts:  []uint32{},
+				ExcludeOutboundPorts: []uint32{},
+			},
+			Exceptions: Exceptions{
+				Labels: map[string]string{
+					// when using DeploymentConfig instead of Deployment, OpenShift will create an extra deployer Pod for which we don't want to inject Kuma
+					"openshift.io/build.name":            "*",
+					"openshift.io/deployer-pod-for.name": "*",
+				},
+			},
+			BuiltinDNS: BuiltinDNS{
+				Enabled: false,
+				Port:    15053,
+			},
 		},
+		MarshalingCacheExpirationTime: 5 * time.Minute,
 	}
 }
 
@@ -62,6 +83,12 @@ type KubernetesRuntimeConfig struct {
 	AdmissionServer AdmissionServerConfig `yaml:"admissionServer"`
 	// Injector-specific configuration
 	Injector Injector `yaml:"injector,omitempty"`
+	// MarshalingCacheExpirationTime defines a duration for how long
+	// marshaled objects will be stored in the cache. If equal to 0s then
+	// cache is turned off
+	MarshalingCacheExpirationTime time.Duration `yaml:"marshalingCacheExpirationTime" envconfig:"kuma_runtime_kubernetes_marshaling_cache_expiration_time"`
+	// ControlPlaneServiceName defines service name of the Kuma control plane. It is used to point Kuma DP to proper URL.
+	ControlPlaneServiceName string `yaml:"controlPlaneServiceName,omitempty" envconfig:"kuma_runtime_kubernetes_control_plane_service_name"`
 }
 
 // Configuration of the Admission WebHook Server implemented by the Control Plane.
@@ -84,14 +111,46 @@ type Injector struct {
 	InitContainer InitContainer `yaml:"initContainer,omitempty"`
 	// CNIEnabled if true runs kuma-cp in CNI compatible mode
 	CNIEnabled bool `yaml:"cniEnabled" envconfig:"kuma_runtime_kubernetes_injector_cni_enabled"`
+	// VirtualProbesEnabled enables automatic converting HttpGet probes to virtual. Virtual probe
+	// serves on sub-path of insecure port 'virtualProbesPort',
+	// i.e :8080/health/readiness -> :9000/8080/health/readiness where 9000 is virtualProbesPort
+	VirtualProbesEnabled bool `yaml:"virtualProbesEnabled" envconfig:"kuma_runtime_kubernetes_virtual_probes_enabled"`
+	// VirtualProbesPort is a port for exposing virtual probes which are not secured by mTLS
+	VirtualProbesPort uint32 `yaml:"virtualProbesPort" envconfig:"kuma_runtime_kubernetes_virtual_probes_port"`
+	// SidecarTraffic is a configuration for a traffic that is intercepted by sidecar
+	SidecarTraffic SidecarTraffic `yaml:"sidecarTraffic"`
+	// Exceptions defines list of exceptions for Kuma injection
+	Exceptions Exceptions `yaml:"exceptions"`
+	// CaCertFile is CA certificate which will be used to verify a connection to the control plane
+	CaCertFile string     `yaml:"caCertFile" envconfig:"kuma_runtime_kubernetes_injector_ca_cert_file"`
+	BuiltinDNS BuiltinDNS `yaml:"builtinDNS"`
+}
+
+// Exceptions defines list of exceptions for Kuma injection
+type Exceptions struct {
+	// Labels is a map of labels for exception. If pod matches label with given value Kuma won't be injected. Specify '*' to match any value.
+	Labels map[string]string `yaml:"labels" envconfig:"kuma_runtime_kubernetes_exceptions_labels"`
+}
+
+type SidecarTraffic struct {
+	// List of inbound ports that will be excluded from interception.
+	// This setting is applied on every pod unless traffic.kuma.io/exclude-inbound-ports annotation is specified on Pod.
+	ExcludeInboundPorts []uint32 `yaml:"excludeInboundPorts" envconfig:"kuma_runtime_kubernetes_sidecar_traffic_exclude_inbound_ports"`
+	// List of outbound ports that will be excluded from interception.
+	// This setting is applied on every pod unless traffic.kuma.io/exclude-oubound-ports annotation is specified on Pod.
+	ExcludeOutboundPorts []uint32 `yaml:"excludeOutboundPorts" envconfig:"kuma_runtime_kubernetes_sidecar_traffic_exclude_outbound_ports"`
 }
 
 // SidecarContainer defines configuration of the Kuma sidecar container.
 type SidecarContainer struct {
 	// Image name.
 	Image string `yaml:"image,omitempty" envconfig:"kuma_runtime_kubernetes_injector_sidecar_container_image"`
-	// Redirect port.
-	RedirectPort uint32 `yaml:"redirectPort,omitempty" envconfig:"kuma_runtime_kubernetes_injector_sidecar_container_redirect_port"`
+	// Redirect port for inbound traffic.
+	RedirectPortInbound uint32 `yaml:"redirectPortInbound,omitempty" envconfig:"kuma_runtime_kubernetes_injector_sidecar_container_redirect_port_inbound"`
+	// Redirect port for inbound IPv6 traffic.
+	RedirectPortInboundV6 uint32 `yaml:"redirectPortInboundV6,omitempty" envconfig:"kuma_runtime_kubernetes_injector_sidecar_container_redirect_port_inbound_v6"`
+	// Redirect port for outbound traffic.
+	RedirectPortOutbound uint32 `yaml:"redirectPortOutbound,omitempty" envconfig:"kuma_runtime_kubernetes_injector_sidecar_container_redirect_port_outbound"`
 	// User ID.
 	UID int64 `yaml:"uid,omitempty" envconfig:"kuma_runtime_kubernetes_injector_sidecar_container_uid"`
 	// Group ID.
@@ -106,13 +165,15 @@ type SidecarContainer struct {
 	LivenessProbe SidecarLivenessProbe `yaml:"livenessProbe,omitempty"`
 	// Compute resource requirements.
 	Resources SidecarResources `yaml:"resources,omitempty"`
+	// EnvVars are additional environment variables that can be placed on Kuma DP sidecar
+	EnvVars map[string]string `yaml:"envVars" envconfig:"kuma_runtime_kubernetes_injector_sidecar_container_env_vars"`
 }
 
 // SidecarReadinessProbe defines periodic probe of container service readiness.
 type SidecarReadinessProbe struct {
-	// Number of seconds after the container has started before liveness probes are initiated.
+	// Number of seconds after the container has started before readiness probes are initiated.
 	InitialDelaySeconds int32 `yaml:"initialDelaySeconds,omitempty" envconfig:"kuma_runtime_kubernetes_injector_sidecar_container_readiness_probe_initial_delay_seconds"`
-	// How often (in seconds) to perform the probe.
+	// Number of seconds after which the probe times out.
 	TimeoutSeconds int32 `yaml:"timeoutSeconds,omitempty" envconfig:"kuma_runtime_kubernetes_injector_sidecar_container_readiness_probe_timeout_seconds"`
 	// Number of seconds after which the probe times out.
 	PeriodSeconds int32 `yaml:"periodSeconds,omitempty" envconfig:"kuma_runtime_kubernetes_injector_sidecar_container_readiness_probe_period_seconds"`
@@ -164,6 +225,13 @@ type InitContainer struct {
 	Image string `yaml:"image,omitempty" envconfig:"kuma_injector_init_container_image"`
 }
 
+type BuiltinDNS struct {
+	// Use the built-in DNS
+	Enabled bool `yaml:"enabled,omitempty" envconfig:"kuma_runtime_kubernetes_injector_builtin_dns_enabled"`
+	// Redirect port for DNS
+	Port uint32 `yaml:"port,omitempty" envconfig:"kuma_runtime_kubernetes_injector_builtin_dns_port"`
+}
+
 var _ config.Config = &KubernetesRuntimeConfig{}
 
 func (c *KubernetesRuntimeConfig) Sanitize() {
@@ -175,6 +243,9 @@ func (c *KubernetesRuntimeConfig) Validate() (errs error) {
 	}
 	if err := c.Injector.Validate(); err != nil {
 		errs = multierr.Append(errs, errors.Wrapf(err, ".Injector is not valid"))
+	}
+	if c.MarshalingCacheExpirationTime < 0 {
+		errs = multierr.Append(errs, errors.Errorf(".MarshalingCacheExpirationTime must be positive or equal to 0"))
 	}
 	return
 }
@@ -223,8 +294,14 @@ func (c *SidecarContainer) Validate() (errs error) {
 	if c.Image == "" {
 		errs = multierr.Append(errs, errors.Errorf(".Image must be non-empty"))
 	}
-	if 65535 < c.RedirectPort {
-		errs = multierr.Append(errs, errors.Errorf(".RedirectPort must be in the range [0, 65535]"))
+	if 65535 < c.RedirectPortInbound {
+		errs = multierr.Append(errs, errors.Errorf(".RedirectPortInbound must be in the range [0, 65535]"))
+	}
+	if 0 != c.RedirectPortInboundV6 && 65535 < c.RedirectPortInboundV6 {
+		errs = multierr.Append(errs, errors.Errorf(".RedirectPortInboundV6 must be in the range [0, 65535]"))
+	}
+	if 65535 < c.RedirectPortOutbound {
+		errs = multierr.Append(errs, errors.Errorf(".RedirectPortOutbound must be in the range [0, 65535]"))
 	}
 	if 65535 < c.AdminPort {
 		errs = multierr.Append(errs, errors.Errorf(".AdminPort must be in the range [0, 65535]"))
@@ -344,6 +421,18 @@ func (c *SidecarResourceLimits) Validate() (errs error) {
 	}
 	if _, err := kube_api.ParseQuantity(c.Memory); err != nil {
 		errs = multierr.Append(errs, errors.Wrapf(err, ".Memory is not valid"))
+	}
+	return
+}
+
+var _ config.Config = &BuiltinDNS{}
+
+func (c *BuiltinDNS) Sanitize() {
+}
+
+func (c *BuiltinDNS) Validate() (errs error) {
+	if 65535 < c.Port {
+		errs = multierr.Append(errs, errors.Errorf(".port must be in the range [0, 65535]"))
 	}
 	return
 }

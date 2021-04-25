@@ -1,8 +1,18 @@
 controlPlane:
-  apiServer:
-    url: http://localhost:5681
+  url: https://localhost:5678
+  retry:
+    backoff: 3s
+    maxDuration: 5m0s
+  caCert: ""
+  caCertFile: ""
 dataplane:
-  mesh: default
   drainTime: 30s
+  bootstrapVersion: ""
 dataplaneRuntime:
   binaryPath: envoy
+dns:
+  coreDnsBinaryPath: coredns
+  coreDnsEmptyPort: 15055
+  coreDnsPort: 15053
+  envoyDnsPort: 15054
+  prometheusPort: 19153

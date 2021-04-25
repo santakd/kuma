@@ -8,16 +8,17 @@ import (
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	. "github.com/Kong/kuma/pkg/xds/topology"
+	. "github.com/kumahq/kuma/pkg/test/matchers"
+	. "github.com/kumahq/kuma/pkg/xds/topology"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	mesh_core "github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	core_manager "github.com/Kong/kuma/pkg/core/resources/manager"
-	core_model "github.com/Kong/kuma/pkg/core/resources/model"
-	core_store "github.com/Kong/kuma/pkg/core/resources/store"
-	core_xds "github.com/Kong/kuma/pkg/core/xds"
-	memory_resources "github.com/Kong/kuma/pkg/plugins/resources/memory"
-	test_model "github.com/Kong/kuma/pkg/test/resources/model"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	mesh_core "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	core_manager "github.com/kumahq/kuma/pkg/core/resources/manager"
+	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
+	core_store "github.com/kumahq/kuma/pkg/core/resources/store"
+	core_xds "github.com/kumahq/kuma/pkg/core/xds"
+	memory_resources "github.com/kumahq/kuma/pkg/plugins/resources/memory"
+	test_model "github.com/kumahq/kuma/pkg/test/resources/model"
 
 	"github.com/golang/protobuf/ptypes"
 )
@@ -38,32 +39,32 @@ var _ = Describe("HealthCheck", func() {
 			// given
 			mesh := &mesh_core.MeshResource{ // mesh that is relevant to this test case
 				Meta: &test_model.ResourceMeta{
-					Mesh: "demo",
 					Name: "demo",
 				},
+				Spec: &mesh_proto.Mesh{},
 			}
 			otherMesh := &mesh_core.MeshResource{ // mesh that is irrelevant to this test case
 				Meta: &test_model.ResourceMeta{
-					Mesh: "default",
 					Name: "default",
 				},
+				Spec: &mesh_proto.Mesh{},
 			}
 			backend := &mesh_core.DataplaneResource{ // dataplane that is a source of traffic
 				Meta: &test_model.ResourceMeta{
 					Mesh: "demo",
 					Name: "backend",
 				},
-				Spec: mesh_proto.Dataplane{
+				Spec: &mesh_proto.Dataplane{
 					Networking: &mesh_proto.Dataplane_Networking{
 						Address: "192.168.0.1",
 						Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
 							{
-								Tags:        map[string]string{"service": "backend", "region": "eu"},
+								Tags:        map[string]string{"kuma.io/service": "backend", "region": "eu"},
 								Port:        8080,
 								ServicePort: 18080,
 							},
 							{
-								Tags:        map[string]string{"service": "frontend", "region": "eu"},
+								Tags:        map[string]string{"kuma.io/service": "frontend", "region": "eu"},
 								Port:        7070,
 								ServicePort: 17070,
 							},
@@ -84,21 +85,19 @@ var _ = Describe("HealthCheck", func() {
 					Mesh: "demo",
 					Name: "healthcheck-redis",
 				},
-				Spec: mesh_proto.HealthCheck{
+				Spec: &mesh_proto.HealthCheck{
 					Sources: []*mesh_proto.Selector{
-						{Match: mesh_proto.TagSelector{"service": "frontend"}},
-						{Match: mesh_proto.TagSelector{"service": "backend"}},
+						{Match: mesh_proto.TagSelector{"kuma.io/service": "frontend"}},
+						{Match: mesh_proto.TagSelector{"kuma.io/service": "backend"}},
 					},
 					Destinations: []*mesh_proto.Selector{
-						{Match: mesh_proto.TagSelector{"service": "redis"}},
+						{Match: mesh_proto.TagSelector{"kuma.io/service": "redis"}},
 					},
 					Conf: &mesh_proto.HealthCheck_Conf{
-						ActiveChecks: &mesh_proto.HealthCheck_Conf_Active{
-							Interval:           ptypes.DurationProto(5 * time.Second),
-							Timeout:            ptypes.DurationProto(4 * time.Second),
-							UnhealthyThreshold: 3,
-							HealthyThreshold:   2,
-						},
+						Interval:           ptypes.DurationProto(5 * time.Second),
+						Timeout:            ptypes.DurationProto(4 * time.Second),
+						UnhealthyThreshold: 3,
+						HealthyThreshold:   2,
 					},
 				},
 			}
@@ -107,18 +106,18 @@ var _ = Describe("HealthCheck", func() {
 					Mesh: "demo",
 					Name: "healthcheck-elastic",
 				},
-				Spec: mesh_proto.HealthCheck{
+				Spec: &mesh_proto.HealthCheck{
 					Sources: []*mesh_proto.Selector{
-						{Match: mesh_proto.TagSelector{"service": "*"}},
+						{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 					},
 					Destinations: []*mesh_proto.Selector{
-						{Match: mesh_proto.TagSelector{"service": "elastic"}},
+						{Match: mesh_proto.TagSelector{"kuma.io/service": "elastic"}},
 					},
 					Conf: &mesh_proto.HealthCheck_Conf{
-						PassiveChecks: &mesh_proto.HealthCheck_Conf_Passive{
-							UnhealthyThreshold: 1,
-							PenaltyInterval:    ptypes.DurationProto(6 * time.Second),
-						},
+						Interval:           ptypes.DurationProto(5 * time.Second),
+						Timeout:            ptypes.DurationProto(4 * time.Second),
+						UnhealthyThreshold: 3,
+						HealthyThreshold:   2,
 					},
 				},
 			}
@@ -127,18 +126,18 @@ var _ = Describe("HealthCheck", func() {
 					Mesh: "default", // other mesh
 					Name: "healthcheck-everything",
 				},
-				Spec: mesh_proto.HealthCheck{
+				Spec: &mesh_proto.HealthCheck{
 					Sources: []*mesh_proto.Selector{
-						{Match: mesh_proto.TagSelector{"service": "*"}},
+						{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 					},
 					Destinations: []*mesh_proto.Selector{
-						{Match: mesh_proto.TagSelector{"service": "*"}},
+						{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 					},
 					Conf: &mesh_proto.HealthCheck_Conf{
-						PassiveChecks: &mesh_proto.HealthCheck_Conf_Passive{
-							UnhealthyThreshold: 20,
-							PenaltyInterval:    ptypes.DurationProto(30 * time.Second),
-						},
+						Interval:           ptypes.DurationProto(5 * time.Second),
+						Timeout:            ptypes.DurationProto(4 * time.Second),
+						UnhealthyThreshold: 3,
+						HealthyThreshold:   2,
 					},
 				},
 			}
@@ -159,11 +158,11 @@ var _ = Describe("HealthCheck", func() {
 			// and
 			Expect(healthChecks).To(HaveKey("redis"))
 			Expect(healthChecks["redis"].Meta.GetName()).To(Equal(healthCheckRedis.Meta.GetName()))
-			Expect(healthChecks["redis"].Spec).To(Equal(healthCheckRedis.Spec))
+			Expect(healthChecks["redis"].Spec).To(MatchProto(healthCheckRedis.Spec))
 			// and
 			Expect(healthChecks).To(HaveKey("elastic"))
 			Expect(healthChecks["elastic"].Meta.GetName()).To(Equal(healthCheckElastic.Meta.GetName()))
-			Expect(healthChecks["elastic"].Spec).To(Equal(healthCheckElastic.Spec))
+			Expect(healthChecks["elastic"].Spec).To(MatchProto(healthCheckElastic.Spec))
 		})
 	})
 
@@ -203,17 +202,17 @@ var _ = Describe("HealthCheck", func() {
 				Expect(healthChecks).Should(Equal(expectedHealthChecks))
 			},
 			Entry("Dataplane without outbound interfaces (and therefore no destinations)", testCase{
-				dataplane:    &mesh_core.DataplaneResource{},
+				dataplane:    mesh_core.NewDataplaneResource(),
 				destinations: nil,
 				healthChecks: nil,
 				expected:     nil,
 			}),
 			Entry("if a destination service has no matching HealthChecks, none should be used", testCase{
 				dataplane: &mesh_core.DataplaneResource{
-					Spec: mesh_proto.Dataplane{
+					Spec: &mesh_proto.Dataplane{
 						Networking: &mesh_proto.Dataplane_Networking{
 							Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-								{Tags: map[string]string{"service": "backend"}},
+								{Tags: map[string]string{"kuma.io/service": "backend"}},
 							},
 							Outbound: []*mesh_proto.Dataplane_Networking_Outbound{
 								{Service: "redis"},
@@ -231,10 +230,10 @@ var _ = Describe("HealthCheck", func() {
 			}),
 			Entry("due to TrafficRoutes, a Dataplane might have more destinations than outbound interfaces", testCase{
 				dataplane: &mesh_core.DataplaneResource{
-					Spec: mesh_proto.Dataplane{
+					Spec: &mesh_proto.Dataplane{
 						Networking: &mesh_proto.Dataplane_Networking{
 							Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-								{Tags: map[string]string{"service": "backend"}},
+								{Tags: map[string]string{"kuma.io/service": "backend"}},
 							},
 							Outbound: []*mesh_proto.Dataplane_Networking_Outbound{
 								{Service: "redis"},
@@ -251,20 +250,18 @@ var _ = Describe("HealthCheck", func() {
 						Meta: &test_model.ResourceMeta{
 							Name: "healthcheck-elastic",
 						},
-						Spec: mesh_proto.HealthCheck{
+						Spec: &mesh_proto.HealthCheck{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "elastic"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "elastic"}},
 							},
 							Conf: &mesh_proto.HealthCheck_Conf{
-								ActiveChecks: &mesh_proto.HealthCheck_Conf_Active{
-									Interval:           ptypes.DurationProto(5 * time.Second),
-									Timeout:            ptypes.DurationProto(4 * time.Second),
-									UnhealthyThreshold: 3,
-									HealthyThreshold:   2,
-								},
+								Interval:           ptypes.DurationProto(5 * time.Second),
+								Timeout:            ptypes.DurationProto(4 * time.Second),
+								UnhealthyThreshold: 3,
+								HealthyThreshold:   2,
 							},
 						},
 					},
@@ -272,18 +269,18 @@ var _ = Describe("HealthCheck", func() {
 						Meta: &test_model.ResourceMeta{
 							Name: "healthcheck-redis",
 						},
-						Spec: mesh_proto.HealthCheck{
+						Spec: &mesh_proto.HealthCheck{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "redis"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "redis"}},
 							},
 							Conf: &mesh_proto.HealthCheck_Conf{
-								PassiveChecks: &mesh_proto.HealthCheck_Conf_Passive{
-									UnhealthyThreshold: 20,
-									PenaltyInterval:    ptypes.DurationProto(30 * time.Second),
-								},
+								Interval:           ptypes.DurationProto(5 * time.Second),
+								Timeout:            ptypes.DurationProto(4 * time.Second),
+								UnhealthyThreshold: 3,
+								HealthyThreshold:   2,
 							},
 						},
 					},
@@ -303,10 +300,10 @@ var _ = Describe("HealthCheck", func() {
 			}),
 			Entry("HealthChecks should be picked by latest creation time given two equally specific HealthChecks", testCase{
 				dataplane: &mesh_core.DataplaneResource{
-					Spec: mesh_proto.Dataplane{
+					Spec: &mesh_proto.Dataplane{
 						Networking: &mesh_proto.Dataplane_Networking{
 							Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-								{Tags: map[string]string{"service": "backend"}},
+								{Tags: map[string]string{"kuma.io/service": "backend"}},
 							},
 							Outbound: []*mesh_proto.Dataplane_Networking_Outbound{
 								{Service: "redis"},
@@ -323,20 +320,18 @@ var _ = Describe("HealthCheck", func() {
 							Name:         "healthcheck-everything-passive",
 							CreationTime: time.Unix(1, 1),
 						},
-						Spec: mesh_proto.HealthCheck{
+						Spec: &mesh_proto.HealthCheck{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Conf: &mesh_proto.HealthCheck_Conf{
-								ActiveChecks: &mesh_proto.HealthCheck_Conf_Active{
-									Interval:           ptypes.DurationProto(5 * time.Second),
-									Timeout:            ptypes.DurationProto(4 * time.Second),
-									UnhealthyThreshold: 3,
-									HealthyThreshold:   2,
-								},
+								Interval:           ptypes.DurationProto(5 * time.Second),
+								Timeout:            ptypes.DurationProto(4 * time.Second),
+								UnhealthyThreshold: 3,
+								HealthyThreshold:   2,
 							},
 						},
 					},
@@ -345,18 +340,18 @@ var _ = Describe("HealthCheck", func() {
 							Name:         "healthcheck-everything-active",
 							CreationTime: time.Unix(0, 0),
 						},
-						Spec: mesh_proto.HealthCheck{
+						Spec: &mesh_proto.HealthCheck{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Conf: &mesh_proto.HealthCheck_Conf{
-								PassiveChecks: &mesh_proto.HealthCheck_Conf_Passive{
-									UnhealthyThreshold: 20,
-									PenaltyInterval:    ptypes.DurationProto(30 * time.Second),
-								},
+								Interval:           ptypes.DurationProto(5 * time.Second),
+								Timeout:            ptypes.DurationProto(4 * time.Second),
+								UnhealthyThreshold: 3,
+								HealthyThreshold:   2,
 							},
 						},
 					},
@@ -371,10 +366,10 @@ var _ = Describe("HealthCheck", func() {
 			}),
 			Entry("HealthCheck with a `source` selector by 2 tags should win over a HealthCheck with a `source` selector by 1 tag", testCase{
 				dataplane: &mesh_core.DataplaneResource{
-					Spec: mesh_proto.Dataplane{
+					Spec: &mesh_proto.Dataplane{
 						Networking: &mesh_proto.Dataplane_Networking{
 							Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-								{Tags: map[string]string{"service": "backend", "region": "eu"}},
+								{Tags: map[string]string{"kuma.io/service": "backend", "region": "eu"}},
 							},
 							Outbound: []*mesh_proto.Dataplane_Networking_Outbound{
 								{Service: "redis"},
@@ -390,20 +385,18 @@ var _ = Describe("HealthCheck", func() {
 						Meta: &test_model.ResourceMeta{
 							Name: "less-specific",
 						},
-						Spec: mesh_proto.HealthCheck{
+						Spec: &mesh_proto.HealthCheck{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "backend"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "backend"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Conf: &mesh_proto.HealthCheck_Conf{
-								ActiveChecks: &mesh_proto.HealthCheck_Conf_Active{
-									Interval:           ptypes.DurationProto(5 * time.Second),
-									Timeout:            ptypes.DurationProto(4 * time.Second),
-									UnhealthyThreshold: 3,
-									HealthyThreshold:   2,
-								},
+								Interval:           ptypes.DurationProto(5 * time.Second),
+								Timeout:            ptypes.DurationProto(4 * time.Second),
+								UnhealthyThreshold: 3,
+								HealthyThreshold:   2,
 							},
 						},
 					},
@@ -411,18 +404,18 @@ var _ = Describe("HealthCheck", func() {
 						Meta: &test_model.ResourceMeta{
 							Name: "more-specific",
 						},
-						Spec: mesh_proto.HealthCheck{
+						Spec: &mesh_proto.HealthCheck{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "backend", "region": "eu"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "backend", "region": "eu"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Conf: &mesh_proto.HealthCheck_Conf{
-								PassiveChecks: &mesh_proto.HealthCheck_Conf_Passive{
-									UnhealthyThreshold: 20,
-									PenaltyInterval:    ptypes.DurationProto(30 * time.Second),
-								},
+								Interval:           ptypes.DurationProto(5 * time.Second),
+								Timeout:            ptypes.DurationProto(4 * time.Second),
+								UnhealthyThreshold: 3,
+								HealthyThreshold:   2,
 							},
 						},
 					},
@@ -437,10 +430,10 @@ var _ = Describe("HealthCheck", func() {
 			}),
 			Entry("HealthCheck with a `source` selector by an exact value should win over a HealthCheck with a `source` selector by a wildcard value", testCase{
 				dataplane: &mesh_core.DataplaneResource{
-					Spec: mesh_proto.Dataplane{
+					Spec: &mesh_proto.Dataplane{
 						Networking: &mesh_proto.Dataplane_Networking{
 							Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-								{Tags: map[string]string{"service": "backend", "region": "eu"}},
+								{Tags: map[string]string{"kuma.io/service": "backend", "region": "eu"}},
 							},
 							Outbound: []*mesh_proto.Dataplane_Networking_Outbound{
 								{Service: "redis"},
@@ -456,20 +449,18 @@ var _ = Describe("HealthCheck", func() {
 						Meta: &test_model.ResourceMeta{
 							Name: "less-specific",
 						},
-						Spec: mesh_proto.HealthCheck{
+						Spec: &mesh_proto.HealthCheck{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Conf: &mesh_proto.HealthCheck_Conf{
-								ActiveChecks: &mesh_proto.HealthCheck_Conf_Active{
-									Interval:           ptypes.DurationProto(5 * time.Second),
-									Timeout:            ptypes.DurationProto(4 * time.Second),
-									UnhealthyThreshold: 3,
-									HealthyThreshold:   2,
-								},
+								Interval:           ptypes.DurationProto(5 * time.Second),
+								Timeout:            ptypes.DurationProto(4 * time.Second),
+								UnhealthyThreshold: 3,
+								HealthyThreshold:   2,
 							},
 						},
 					},
@@ -477,18 +468,18 @@ var _ = Describe("HealthCheck", func() {
 						Meta: &test_model.ResourceMeta{
 							Name: "more-specific",
 						},
-						Spec: mesh_proto.HealthCheck{
+						Spec: &mesh_proto.HealthCheck{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "backend"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "backend"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Conf: &mesh_proto.HealthCheck_Conf{
-								PassiveChecks: &mesh_proto.HealthCheck_Conf_Passive{
-									UnhealthyThreshold: 20,
-									PenaltyInterval:    ptypes.DurationProto(30 * time.Second),
-								},
+								Interval:           ptypes.DurationProto(5 * time.Second),
+								Timeout:            ptypes.DurationProto(4 * time.Second),
+								UnhealthyThreshold: 3,
+								HealthyThreshold:   2,
 							},
 						},
 					},
@@ -503,10 +494,10 @@ var _ = Describe("HealthCheck", func() {
 			}),
 			Entry("HealthCheck with a `destination` selector by an exact value should win over a HealthCheck with a `destination` selector by a wildcard value", testCase{
 				dataplane: &mesh_core.DataplaneResource{
-					Spec: mesh_proto.Dataplane{
+					Spec: &mesh_proto.Dataplane{
 						Networking: &mesh_proto.Dataplane_Networking{
 							Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-								{Tags: map[string]string{"service": "backend", "region": "eu"}},
+								{Tags: map[string]string{"kuma.io/service": "backend", "region": "eu"}},
 							},
 							Outbound: []*mesh_proto.Dataplane_Networking_Outbound{
 								{Service: "redis"},
@@ -522,20 +513,18 @@ var _ = Describe("HealthCheck", func() {
 						Meta: &test_model.ResourceMeta{
 							Name: "less-specific",
 						},
-						Spec: mesh_proto.HealthCheck{
+						Spec: &mesh_proto.HealthCheck{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Conf: &mesh_proto.HealthCheck_Conf{
-								ActiveChecks: &mesh_proto.HealthCheck_Conf_Active{
-									Interval:           ptypes.DurationProto(5 * time.Second),
-									Timeout:            ptypes.DurationProto(4 * time.Second),
-									UnhealthyThreshold: 3,
-									HealthyThreshold:   2,
-								},
+								Interval:           ptypes.DurationProto(5 * time.Second),
+								Timeout:            ptypes.DurationProto(4 * time.Second),
+								UnhealthyThreshold: 3,
+								HealthyThreshold:   2,
 							},
 						},
 					},
@@ -543,18 +532,18 @@ var _ = Describe("HealthCheck", func() {
 						Meta: &test_model.ResourceMeta{
 							Name: "more-specific",
 						},
-						Spec: mesh_proto.HealthCheck{
+						Spec: &mesh_proto.HealthCheck{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "redis"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "redis"}},
 							},
 							Conf: &mesh_proto.HealthCheck_Conf{
-								PassiveChecks: &mesh_proto.HealthCheck_Conf_Passive{
-									UnhealthyThreshold: 20,
-									PenaltyInterval:    ptypes.DurationProto(30 * time.Second),
-								},
+								Interval:           ptypes.DurationProto(5 * time.Second),
+								Timeout:            ptypes.DurationProto(4 * time.Second),
+								UnhealthyThreshold: 3,
+								HealthyThreshold:   2,
 							},
 						},
 					},
@@ -569,10 +558,10 @@ var _ = Describe("HealthCheck", func() {
 			}),
 			Entry("in case if HealthChecks have equal aggregate ranks, most specific one should be selected based on last creation time", testCase{
 				dataplane: &mesh_core.DataplaneResource{
-					Spec: mesh_proto.Dataplane{
+					Spec: &mesh_proto.Dataplane{
 						Networking: &mesh_proto.Dataplane_Networking{
 							Inbound: []*mesh_proto.Dataplane_Networking_Inbound{
-								{Tags: map[string]string{"service": "backend", "region": "eu"}},
+								{Tags: map[string]string{"kuma.io/service": "backend", "region": "eu"}},
 							},
 							Outbound: []*mesh_proto.Dataplane_Networking_Outbound{
 								{Service: "redis"},
@@ -589,20 +578,18 @@ var _ = Describe("HealthCheck", func() {
 							Name:         "equally-specific-2",
 							CreationTime: time.Unix(1, 1),
 						},
-						Spec: mesh_proto.HealthCheck{
+						Spec: &mesh_proto.HealthCheck{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "redis"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "redis"}},
 							},
 							Conf: &mesh_proto.HealthCheck_Conf{
-								ActiveChecks: &mesh_proto.HealthCheck_Conf_Active{
-									Interval:           ptypes.DurationProto(5 * time.Second),
-									Timeout:            ptypes.DurationProto(4 * time.Second),
-									UnhealthyThreshold: 3,
-									HealthyThreshold:   2,
-								},
+								Interval:           ptypes.DurationProto(5 * time.Second),
+								Timeout:            ptypes.DurationProto(4 * time.Second),
+								UnhealthyThreshold: 3,
+								HealthyThreshold:   2,
 							},
 						},
 					},
@@ -611,18 +598,18 @@ var _ = Describe("HealthCheck", func() {
 							Name:         "equally-specific-1",
 							CreationTime: time.Unix(0, 0),
 						},
-						Spec: mesh_proto.HealthCheck{
+						Spec: &mesh_proto.HealthCheck{
 							Sources: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "backend"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "backend"}},
 							},
 							Destinations: []*mesh_proto.Selector{
-								{Match: mesh_proto.TagSelector{"service": "*"}},
+								{Match: mesh_proto.TagSelector{"kuma.io/service": "*"}},
 							},
 							Conf: &mesh_proto.HealthCheck_Conf{
-								PassiveChecks: &mesh_proto.HealthCheck_Conf_Passive{
-									UnhealthyThreshold: 20,
-									PenaltyInterval:    ptypes.DurationProto(30 * time.Second),
-								},
+								Interval:           ptypes.DurationProto(5 * time.Second),
+								Timeout:            ptypes.DurationProto(4 * time.Second),
+								UnhealthyThreshold: 3,
+								HealthyThreshold:   2,
 							},
 						},
 					},

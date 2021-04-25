@@ -15,11 +15,9 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/pkg/errors"
 
-	"github.com/Kong/kuma/pkg/core/xds"
-	"github.com/Kong/kuma/pkg/sds/auth"
-	"github.com/Kong/kuma/pkg/tokens/builtin/issuer"
-	"github.com/Kong/kuma/pkg/tokens/builtin/server"
-	"github.com/Kong/kuma/pkg/tokens/builtin/server/types"
+	"github.com/kumahq/kuma/pkg/tokens/builtin/issuer"
+	"github.com/kumahq/kuma/pkg/tokens/builtin/server"
+	"github.com/kumahq/kuma/pkg/tokens/builtin/server/types"
 )
 
 type staticTokenIssuer struct {
@@ -28,12 +26,12 @@ type staticTokenIssuer struct {
 
 var _ issuer.DataplaneTokenIssuer = &staticTokenIssuer{}
 
-func (s *staticTokenIssuer) Generate(proxyId xds.ProxyId) (auth.Credential, error) {
-	return auth.Credential(s.resp), nil
+func (s *staticTokenIssuer) Generate(identity issuer.DataplaneIdentity) (issuer.Token, error) {
+	return s.resp, nil
 }
 
-func (s *staticTokenIssuer) Validate(credential auth.Credential) (xds.ProxyId, error) {
-	return xds.ProxyId{}, errors.New("not implemented")
+func (s *staticTokenIssuer) Validate(token issuer.Token, meshName string) (issuer.DataplaneIdentity, error) {
+	return issuer.DataplaneIdentity{}, errors.New("not implemented")
 }
 
 var _ = Describe("Dataplane Token Webservice", func() {
@@ -97,8 +95,6 @@ var _ = Describe("Dataplane Token Webservice", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(400))
 		},
-		Entry("json does not contain name", `{"mesh": "default"}`),
-		Entry("json does not contain mesh", `{"name": "default"}`),
 		Entry("not valid json", `not-valid-json`),
 	)
 })

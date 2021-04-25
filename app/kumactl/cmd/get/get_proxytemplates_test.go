@@ -14,15 +14,15 @@ import (
 	gomega_types "github.com/onsi/gomega/types"
 	"github.com/spf13/cobra"
 
-	mesh_proto "github.com/Kong/kuma/api/mesh/v1alpha1"
-	"github.com/Kong/kuma/app/kumactl/cmd"
-	kumactl_cmd "github.com/Kong/kuma/app/kumactl/pkg/cmd"
-	config_proto "github.com/Kong/kuma/pkg/config/app/kumactl/v1alpha1"
-	mesh_core "github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	core_model "github.com/Kong/kuma/pkg/core/resources/model"
-	core_store "github.com/Kong/kuma/pkg/core/resources/store"
-	memory_resources "github.com/Kong/kuma/pkg/plugins/resources/memory"
-	test_model "github.com/Kong/kuma/pkg/test/resources/model"
+	mesh_proto "github.com/kumahq/kuma/api/mesh/v1alpha1"
+	"github.com/kumahq/kuma/app/kumactl/cmd"
+	kumactl_cmd "github.com/kumahq/kuma/app/kumactl/pkg/cmd"
+	config_proto "github.com/kumahq/kuma/pkg/config/app/kumactl/v1alpha1"
+	mesh_core "github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	core_model "github.com/kumahq/kuma/pkg/core/resources/model"
+	core_store "github.com/kumahq/kuma/pkg/core/resources/store"
+	memory_resources "github.com/kumahq/kuma/pkg/plugins/resources/memory"
+	test_model "github.com/kumahq/kuma/pkg/test/resources/model"
 )
 
 var _ = Describe("kumactl get proxytemplates", func() {
@@ -36,21 +36,21 @@ var _ = Describe("kumactl get proxytemplates", func() {
 					Mesh: "default",
 					Name: "custom-template",
 				},
-				Spec: mesh_proto.ProxyTemplate{},
+				Spec: &mesh_proto.ProxyTemplate{},
 			},
 			{
 				Meta: &test_model.ResourceMeta{
 					Mesh: "default",
 					Name: "another-template",
 				},
-				Spec: mesh_proto.ProxyTemplate{},
+				Spec: &mesh_proto.ProxyTemplate{},
 			},
 			{
 				Meta: &test_model.ResourceMeta{
 					Mesh: "demo",
 					Name: "simple-template",
 				},
-				Spec: mesh_proto.ProxyTemplate{},
+				Spec: &mesh_proto.ProxyTemplate{},
 			},
 		}
 	})
@@ -73,7 +73,7 @@ var _ = Describe("kumactl get proxytemplates", func() {
 				},
 			}
 
-			store = memory_resources.NewStore()
+			store = core_store.NewPaginationStore(memory_resources.NewStore())
 
 			for _, pt := range sampleProxyTemplates {
 				key := core_model.ResourceKey{

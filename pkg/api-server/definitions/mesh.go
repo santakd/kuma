@@ -1,15 +1,15 @@
 package definitions
 
 import (
-	"github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	"github.com/Kong/kuma/pkg/core/resources/model"
+	"github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
 )
 
 var MeshWsDefinition = ResourceWsDefinition{
 	Name: "Mesh",
 	Path: "meshes",
 	ResourceFactory: func() model.Resource {
-		return &mesh.MeshResource{}
+		return mesh.NewMeshResource()
 	},
 	ResourceListFactory: func() model.ResourceList {
 		return &mesh.MeshResourceList{}

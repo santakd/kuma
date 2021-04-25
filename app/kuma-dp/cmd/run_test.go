@@ -13,74 +13,27 @@ import (
 	"strings"
 	"syscall"
 
-	envoy_bootstrap "github.com/envoyproxy/go-control-plane/envoy/config/bootstrap/v2"
-	"github.com/golang/protobuf/proto"
+	"github.com/kumahq/kuma/pkg/xds/bootstrap/types"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	"github.com/Kong/kuma/app/kuma-dp/pkg/dataplane/envoy"
-	"github.com/Kong/kuma/pkg/catalog"
-	catalog_client "github.com/Kong/kuma/pkg/catalog/client"
-	kumadp "github.com/Kong/kuma/pkg/config/app/kuma-dp"
-	"github.com/Kong/kuma/pkg/core"
-	"github.com/Kong/kuma/pkg/test"
-	test_catalog "github.com/Kong/kuma/pkg/test/catalog"
-	util_proto "github.com/Kong/kuma/pkg/util/proto"
+	"github.com/kumahq/kuma/app/kuma-dp/pkg/dataplane/envoy"
+	kumadp "github.com/kumahq/kuma/pkg/config/app/kuma-dp"
+	"github.com/kumahq/kuma/pkg/core"
+	"github.com/kumahq/kuma/pkg/test"
 )
 
 var _ = Describe("run", func() {
 
 	var backupSetupSignalHandler func() <-chan struct{}
-	var backupBootstrapGenerator envoy.BootstrapConfigFactoryFunc
-	var backupCatalogClientFactory CatalogClientFactory
-
-	catalogDataplaneTokenServerEnabledFn := func(address string) (client catalog_client.CatalogClient, e error) {
-		return &test_catalog.StaticCatalogClient{
-			Resp: catalog.Catalog{
-				Apis: catalog.Apis{
-					Bootstrap: catalog.BootstrapApi{
-						Url: "http://localhost:5681",
-					},
-					DataplaneToken: catalog.DataplaneTokenApi{
-						LocalUrl: "http://localhost:5683",
-					},
-				},
-			},
-		}, nil
-	}
 
 	BeforeEach(func() {
 		backupSetupSignalHandler = core.SetupSignalHandler
-		backupBootstrapGenerator = bootstrapGenerator
-		backupCatalogClientFactory = catalogClientFactory
-		bootstrapGenerator = func(_ string, cfg kumadp.Config) (proto.Message, error) {
-			bootstrap := envoy_bootstrap.Bootstrap{}
-			respBytes, err := ioutil.ReadFile(filepath.Join("testdata", "bootstrap-config.golden.yaml"))
-			Expect(err).ToNot(HaveOccurred())
-			err = util_proto.FromYAML(respBytes, &bootstrap)
-			Expect(err).ToNot(HaveOccurred())
-			return &bootstrap, nil
-		}
-		catalogClientFactory = func(address string) (client catalog_client.CatalogClient, e error) {
-			return &test_catalog.StaticCatalogClient{
-				Resp: catalog.Catalog{
-					Apis: catalog.Apis{
-						Bootstrap: catalog.BootstrapApi{
-							Url: "http://localhost:5681",
-						},
-						DataplaneToken: catalog.DataplaneTokenApi{
-							LocalUrl: "", // dataplane token is disabled
-						},
-					},
-				},
-			}, nil
-		}
 	})
 	AfterEach(func() {
 		core.SetupSignalHandler = backupSetupSignalHandler
-		bootstrapGenerator = backupBootstrapGenerator
-		catalogClientFactory = backupCatalogClientFactory
 	})
 
 	var stopCh chan struct{}
@@ -151,7 +104,13 @@ var _ = Describe("run", func() {
 			}
 
 			// given
-			cmd := newRootCmd()
+			rootCtx := DefaultRootContext()
+			rootCtx.BootstrapGenerator = func(_ string, cfg kumadp.Config, _ envoy.BootstrapParams) ([]byte, types.BootstrapVersion, error) {
+				respBytes, err := ioutil.ReadFile(filepath.Join("testdata", "bootstrap-config.golden.yaml"))
+				Expect(err).ToNot(HaveOccurred())
+				return respBytes, "", nil
+			}
+			cmd := NewRootCmd(rootCtx)
 			cmd.SetArgs(append([]string{"run"}, given.args...))
 			cmd.SetOut(&bytes.Buffer{})
 			cmd.SetErr(&bytes.Buffer{})
@@ -185,13 +144,14 @@ var _ = Describe("run", func() {
 			Expect(err).ToNot(HaveOccurred())
 			// and
 			actualArgs := strings.Split(string(cmdline), "\n")
-			Expect(actualArgs[0]).To(Equal("-c"))
-			actualConfigFile := actualArgs[1]
+			Expect(actualArgs[0]).To(Equal("--version"))
+			Expect(actualArgs[1]).To(Equal("-c"))
+			actualConfigFile := actualArgs[2]
 			Expect(actualConfigFile).To(BeARegularFile())
 
 			// then
 			if given.expectedFile != "" {
-				Expect(actualArgs[1]).To(Equal(given.expectedFile))
+				Expect(actualArgs[2]).To(Equal(given.expectedFile))
 			}
 
 			// when
@@ -225,6 +185,7 @@ var _ = Describe("run", func() {
 				envVars: map[string]string{
 					"KUMA_CONTROL_PLANE_API_SERVER_URL":  "http://localhost:1234",
 					"KUMA_DATAPLANE_NAME":                "example",
+					"KUMA_DATAPLANE_MESH":                "default",
 					"KUMA_DATAPLANE_ADMIN_PORT":          fmt.Sprintf("%d", port),
 					"KUMA_DATAPLANE_RUNTIME_BINARY_PATH": filepath.Join("testdata", "envoy-mock.sleep.sh"),
 					// Notice: KUMA_DATAPLANE_RUNTIME_CONFIG_DIR is not set in order to let `kuma-dp` to create a temporary directory
@@ -238,6 +199,7 @@ var _ = Describe("run", func() {
 				envVars: map[string]string{
 					"KUMA_CONTROL_PLANE_API_SERVER_URL":  "http://localhost:1234",
 					"KUMA_DATAPLANE_NAME":                "example",
+					"KUMA_DATAPLANE_MESH":                "default",
 					"KUMA_DATAPLANE_ADMIN_PORT":          fmt.Sprintf("%d", port),
 					"KUMA_DATAPLANE_RUNTIME_BINARY_PATH": filepath.Join("testdata", "envoy-mock.sleep.sh"),
 					"KUMA_DATAPLANE_RUNTIME_CONFIG_DIR":  tmpDir,
@@ -252,6 +214,7 @@ var _ = Describe("run", func() {
 				args: []string{
 					"--cp-address", "http://localhost:1234",
 					"--name", "example",
+					"--mesh", "default",
 					"--admin-port", fmt.Sprintf("%d", port),
 					"--binary-path", filepath.Join("testdata", "envoy-mock.sleep.sh"),
 					// Notice: --config-dir is not set in order to let `kuma-dp` to create a temporary directory
@@ -265,6 +228,7 @@ var _ = Describe("run", func() {
 				args: []string{
 					"--cp-address", "http://localhost:1234",
 					"--name", "example",
+					"--mesh", "default",
 					"--admin-port", fmt.Sprintf("%d", port),
 					"--binary-path", filepath.Join("testdata", "envoy-mock.sleep.sh"),
 					"--config-dir", tmpDir,
@@ -273,12 +237,12 @@ var _ = Describe("run", func() {
 			}
 		}),
 		Entry("can be launched with args and dataplane token", func() testCase {
-			catalogClientFactory = catalogDataplaneTokenServerEnabledFn
 			return testCase{
 				envVars: map[string]string{},
 				args: []string{
 					"--cp-address", "http://localhost:1234",
 					"--name", "example",
+					"--mesh", "default",
 					"--admin-port", fmt.Sprintf("%d", port),
 					"--binary-path", filepath.Join("testdata", "envoy-mock.sleep.sh"),
 					"--dataplane-token-file", filepath.Join("testdata", "token"),
@@ -292,6 +256,7 @@ var _ = Describe("run", func() {
 				envVars: map[string]string{
 					"KUMA_CONTROL_PLANE_API_SERVER_URL":  "http://localhost:1234",
 					"KUMA_DATAPLANE_NAME":                "example",
+					"KUMA_DATAPLANE_MESH":                "default",
 					"KUMA_DATAPLANE_ADMIN_PORT":          "",
 					"KUMA_DATAPLANE_RUNTIME_BINARY_PATH": filepath.Join("testdata", "envoy-mock.sleep.sh"),
 					// Notice: KUMA_DATAPLANE_RUNTIME_CONFIG_DIR is not set in order to let `kuma-dp` to create a temporary directory
@@ -306,6 +271,7 @@ var _ = Describe("run", func() {
 				args: []string{
 					"--cp-address", "http://localhost:1234",
 					"--name", "example",
+					"--mesh", "default",
 					"--admin-port", "",
 					"--binary-path", filepath.Join("testdata", "envoy-mock.sleep.sh"),
 					// Notice: --config-dir is not set in order to let `kuma-dp` to create a temporary directory
@@ -313,29 +279,22 @@ var _ = Describe("run", func() {
 				expectedFile: "",
 			}
 		}),
+		Entry("can be launched with dataplane template", func() testCase {
+			return testCase{
+				envVars: map[string]string{},
+				args: []string{
+					"--cp-address", "http://localhost:1234",
+					"--admin-port", fmt.Sprintf("%d", port),
+					"--binary-path", filepath.Join("testdata", "envoy-mock.sleep.sh"),
+					"--dataplane-token-file", filepath.Join("testdata", "token"),
+					"--dataplane-file", filepath.Join("testdata", "dataplane_template.yaml"),
+					"--dataplane-var", "name=example",
+					"--dataplane-var", "address=127.0.0.1",
+				},
+				expectedFile: "",
+			}
+		}),
 	)
-
-	It("should fail when dataplane token server is enabled but token is not provided", func() {
-		// setup
-		catalogClientFactory = catalogDataplaneTokenServerEnabledFn
-
-		// given
-		cmd := newRootCmd()
-		cmd.SetArgs([]string{
-			"run",
-			"--cp-address", "http://localhost:1234",
-			"--name", "example",
-			"--admin-port", fmt.Sprintf("%d", port),
-			"--binary-path", filepath.Join("testdata", "envoy-mock.sleep.sh"),
-		})
-
-		// when
-		err := cmd.Execute()
-
-		// then
-		Expect(err).To(HaveOccurred())
-		Expect(err).To(MatchError("Kuma CP is configured with Dataplane Token Server therefore the Dataplane Token is required. Generate token using 'kumactl generate dataplane-token > /path/file' and provide it via --dataplane-token-file=/path/file argument to Kuma DP"))
-	})
 
 	It("should fail when there are no free ports in the port range chosen for Envoy Admin API", func() {
 
@@ -350,11 +309,12 @@ var _ = Describe("run", func() {
 		defer l.Close()
 
 		// given
-		cmd := newRootCmd()
+		cmd := NewRootCmd(DefaultRootContext())
 		cmd.SetArgs([]string{
 			"run",
 			"--cp-address", "http://localhost:1234",
 			"--name", "example",
+			"--mesh", "default",
 			"--admin-port", fmt.Sprintf("%d", port),
 			"--binary-path", filepath.Join("testdata", "envoy-mock.sleep.sh"),
 		})
@@ -365,5 +325,27 @@ var _ = Describe("run", func() {
 		// then
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring(fmt.Sprintf(`unable to find a free port in the range "%d" for Envoy Admin API to listen on`, port)))
+	})
+
+	It("should fail when name and mesh is provided with dataplane definition", func() {
+		// given
+		cmd := NewRootCmd(DefaultRootContext())
+		cmd.SetArgs([]string{
+			"run",
+			"--cp-address", "http://localhost:1234",
+			"--binary-path", filepath.Join("testdata", "envoy-mock.sleep.sh"),
+			"--dataplane-file", filepath.Join("testdata", "dataplane_template.yaml"),
+			"--dataplane-var", "name=example",
+			"--dataplane-var", "address=127.0.0.1",
+			"--name=xyz",
+			"--mesh=xyz",
+		})
+
+		// when
+		err := cmd.Execute()
+
+		// then
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(Equal("--name and --mesh cannot be specified when dataplane definition is provided. Mesh and name will be read from the dataplane definition."))
 	})
 })

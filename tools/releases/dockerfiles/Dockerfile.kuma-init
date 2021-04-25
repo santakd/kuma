@@ -1,6 +1,16 @@
-FROM docker.io/istio/proxy_init:1.1.17
+FROM ubuntu:focal
+
+RUN apt-get update && \
+    apt-get -y install iptables iproute2 && \
+    rm -rf /var/lib/apt/lists/*
+
+ADD $KUMA_ROOT/build/artifacts-linux-amd64/kumactl/kumactl /usr/bin
 
 RUN mkdir /kuma
 COPY $KUMA_ROOT/tools/releases/templates/LICENSE /kuma
-COPY $KUMA_ROOT/tools/releases/templates/NOTICE-kuma-init /kuma/NOTICE
+COPY $KUMA_ROOT/tools/releases/templates/NOTICE-kumactl /kuma/NOTICE
 COPY $KUMA_ROOT/tools/releases/templates/README /kuma
+
+RUN adduser --system --disabled-password --group kumactl --uid 5678
+
+ENTRYPOINT ["/usr/bin/kumactl", "install", "transparent-proxy"]

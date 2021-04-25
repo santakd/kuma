@@ -3,13 +3,16 @@ package runtime
 import (
 	"github.com/pkg/errors"
 
-	"github.com/Kong/kuma/pkg/config/core"
-	"github.com/Kong/kuma/pkg/config/plugins/runtime/k8s"
+	"github.com/kumahq/kuma/pkg/config/plugins/runtime/universal"
+
+	"github.com/kumahq/kuma/pkg/config/core"
+	"github.com/kumahq/kuma/pkg/config/plugins/runtime/k8s"
 )
 
 func DefaultRuntimeConfig() *RuntimeConfig {
 	return &RuntimeConfig{
 		Kubernetes: k8s.DefaultKubernetesRuntimeConfig(),
+		Universal:  universal.DefaultUniversalRuntimeConfig(),
 	}
 }
 
@@ -17,6 +20,8 @@ func DefaultRuntimeConfig() *RuntimeConfig {
 type RuntimeConfig struct {
 	// Kubernetes-specific configuration
 	Kubernetes *k8s.KubernetesRuntimeConfig `yaml:"kubernetes"`
+	// Universal-specific configuration
+	Universal *universal.UniversalRuntimeConfig `yaml:"universal"`
 }
 
 func (c *RuntimeConfig) Sanitize() {

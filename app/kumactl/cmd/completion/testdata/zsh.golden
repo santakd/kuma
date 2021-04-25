@@ -22,7 +22,8 @@ function _kumactl {
       "get:Show Kuma resources"
       "help:Help about any command"
       "inspect:Inspect Kuma resources"
-      "install:Install Kuma on Kubernetes"
+      "install:Install various Kuma components."
+      "uninstall:Uninstall various Kuma components."
       "version:Print version"
     )
     _describe "command" commands
@@ -57,6 +58,9 @@ function _kumactl {
   install)
     _kumactl_install
     ;;
+  uninstall)
+    _kumactl_uninstall
+    ;;
   version)
     _kumactl_version
     ;;
@@ -66,7 +70,7 @@ function _kumactl {
 function _kumactl_apply {
   _arguments \
     '--dry-run[Resolve variable and prints result out without actual applying]' \
-    '(-f --file)'{-f,--file}'[Path to file to apply]:' \
+    '(-f --file)'{-f,--file}'[Path to file to apply. Pass `-` to read from stdin]:' \
     '(-v --var)'{-v,--var}'[Variable to replace in configuration]:' \
     '--config-file[path to the configuration file to use]:' \
     '--log-level[log level: one of off|info|debug]:' \
@@ -202,11 +206,13 @@ function _kumactl_config_control-planes {
 
 function _kumactl_config_control-planes_add {
   _arguments \
-    '--address[URL of the Control Plane API Server (required)]:' \
-    '--admin-client-cert[Path to certificate of a client that is authorized to use Admin Server]:' \
-    '--admin-client-key[Path to certificate key of a client that is authorized to use Admin Server]:' \
+    '--address[URL of the Control Plane API Server (required). Example: http://localhost:5681 or https://localhost:5682)]:' \
+    '--ca-cert-file[path to the certificate authority which will be used to verify the Control Plane certificate (kumactl stores only a reference to this file)]:' \
+    '--client-cert-file[path to the certificate of a client that is authorized to use the Admin operations of the Control Plane (kumactl stores only a reference to this file)]:' \
+    '--client-key-file[path to the certificate key of a client that is authorized to use the Admin operations of the Control Plane (kumactl stores only a reference to this file)]:' \
     '--name[reference name for the Control Plane (required)]:' \
     '--overwrite[overwrite existing Control Plane with the same reference name]' \
+    '--skip-verify[skip CA verification]' \
     '--config-file[path to the configuration file to use]:' \
     '--log-level[log level: one of off|info|debug]:' \
     '(-m --mesh)'{-m,--mesh}'[mesh to use]:'
@@ -282,7 +288,9 @@ function _kumactl_generate {
 
 function _kumactl_generate_dataplane-token {
   _arguments \
-    '--dataplane[name of the Dataplane]:' \
+    '--name[name of the Dataplane]:' \
+    '--tag[required tag values for dataplane (split values by comma to provide multiple values)]:' \
+    '--type[type of the Dataplane ("dataplane", "ingress")]:' \
     '--config-file[path to the configuration file to use]:' \
     '--log-level[log level: one of off|info|debug]:' \
     '(-m --mesh)'{-m,--mesh}'[mesh to use]:'
@@ -314,43 +322,73 @@ function _kumactl_get {
   case $state in
   cmnds)
     commands=(
+      "circuit-breaker:Show a single CircuitBreaker resource"
+      "circuit-breakers:Show CircuitBreaker"
       "dataplane:Show a single Dataplane resource"
-      "dataplanes:Show Dataplanes"
-      "fault-injection:Show a single Fault-Injection resource"
-      "fault-injections:Show FaultInjections"
+      "dataplanes:Show Dataplane"
+      "external-service:Show a single ExternalService resource"
+      "external-services:Show ExternalService"
+      "fault-injection:Show a single FaultInjection resource"
+      "fault-injections:Show FaultInjection"
+      "global-secret:Show a single GlobalSecret resource"
+      "global-secrets:Show GlobalSecret"
       "healthcheck:Show a single HealthCheck resource"
-      "healthchecks:Show HealthChecks"
+      "healthchecks:Show HealthCheck"
       "mesh:Show a single Mesh resource"
-      "meshes:Show Meshes"
-      "proxytemplate:Show a single Proxytemplate resource"
-      "proxytemplates:Show ProxyTemplates"
+      "meshes:Show Mesh"
+      "proxytemplate:Show a single ProxyTemplate resource"
+      "proxytemplates:Show ProxyTemplate"
+      "retries:Show Retry"
+      "retry:Show a single Retry resource"
       "secret:Show a single Secret resource"
-      "secrets:Show Secrets"
+      "secrets:Show Secret"
+      "timeout:Show a single Timeout resource"
+      "timeouts:Show Timeout"
       "traffic-log:Show a single TrafficLog resource"
-      "traffic-logs:Show TrafficLogs"
+      "traffic-logs:Show TrafficLog"
       "traffic-permission:Show a single TrafficPermission resource"
-      "traffic-permissions:Show TrafficPermissions"
+      "traffic-permissions:Show TrafficPermission"
       "traffic-route:Show a single TrafficRoute resource"
-      "traffic-routes:Show TrafficRoutes"
+      "traffic-routes:Show TrafficRoute"
       "traffic-trace:Show a single TrafficTrace resource"
-      "traffic-traces:Show TrafficTraces"
+      "traffic-traces:Show TrafficTrace"
+      "zone:Show a single Retry resource"
+      "zones:Show Zone"
     )
     _describe "command" commands
     ;;
   esac
 
   case "$words[1]" in
+  circuit-breaker)
+    _kumactl_get_circuit-breaker
+    ;;
+  circuit-breakers)
+    _kumactl_get_circuit-breakers
+    ;;
   dataplane)
     _kumactl_get_dataplane
     ;;
   dataplanes)
     _kumactl_get_dataplanes
     ;;
+  external-service)
+    _kumactl_get_external-service
+    ;;
+  external-services)
+    _kumactl_get_external-services
+    ;;
   fault-injection)
     _kumactl_get_fault-injection
     ;;
   fault-injections)
     _kumactl_get_fault-injections
+    ;;
+  global-secret)
+    _kumactl_get_global-secret
+    ;;
+  global-secrets)
+    _kumactl_get_global-secrets
     ;;
   healthcheck)
     _kumactl_get_healthcheck
@@ -370,11 +408,23 @@ function _kumactl_get {
   proxytemplates)
     _kumactl_get_proxytemplates
     ;;
+  retries)
+    _kumactl_get_retries
+    ;;
+  retry)
+    _kumactl_get_retry
+    ;;
   secret)
     _kumactl_get_secret
     ;;
   secrets)
     _kumactl_get_secrets
+    ;;
+  timeout)
+    _kumactl_get_timeout
+    ;;
+  timeouts)
+    _kumactl_get_timeouts
     ;;
   traffic-log)
     _kumactl_get_traffic-log
@@ -400,7 +450,31 @@ function _kumactl_get {
   traffic-traces)
     _kumactl_get_traffic-traces
     ;;
+  zone)
+    _kumactl_get_zone
+    ;;
+  zones)
+    _kumactl_get_zones
+    ;;
   esac
+}
+
+function _kumactl_get_circuit-breaker {
+  _arguments \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
+    '(-o --output)'{-o,--output}'[output format: one of table|yaml|json]:'
+}
+
+function _kumactl_get_circuit-breakers {
+  _arguments \
+    '--offset[the offset that indicates starting element of the resources list to retrieve]:' \
+    '--size[maximum number of elements to return]:' \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
+    '(-o --output)'{-o,--output}'[output format: one of table|yaml|json]:'
 }
 
 function _kumactl_get_dataplane {
@@ -412,6 +486,24 @@ function _kumactl_get_dataplane {
 }
 
 function _kumactl_get_dataplanes {
+  _arguments \
+    '--offset[the offset that indicates starting element of the resources list to retrieve]:' \
+    '--size[maximum number of elements to return]:' \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
+    '(-o --output)'{-o,--output}'[output format: one of table|yaml|json]:'
+}
+
+function _kumactl_get_external-service {
+  _arguments \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
+    '(-o --output)'{-o,--output}'[output format: one of table|yaml|json]:'
+}
+
+function _kumactl_get_external-services {
   _arguments \
     '--offset[the offset that indicates starting element of the resources list to retrieve]:' \
     '--size[maximum number of elements to return]:' \
@@ -433,6 +525,22 @@ function _kumactl_get_fault-injections {
   _arguments \
     '--offset[the offset that indicates starting element of the resources list to retrieve]:' \
     '--size[maximum number of elements to return]:' \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
+    '(-o --output)'{-o,--output}'[output format: one of table|yaml|json]:'
+}
+
+function _kumactl_get_global-secret {
+  _arguments \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
+    '(-o --output)'{-o,--output}'[output format: one of table|yaml|json]:'
+}
+
+function _kumactl_get_global-secrets {
+  _arguments \
     '--config-file[path to the configuration file to use]:' \
     '--log-level[log level: one of off|info|debug]:' \
     '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
@@ -493,6 +601,24 @@ function _kumactl_get_proxytemplates {
     '(-o --output)'{-o,--output}'[output format: one of table|yaml|json]:'
 }
 
+function _kumactl_get_retries {
+  _arguments \
+    '--offset[the offset that indicates starting element of the resources list to retrieve]:' \
+    '--size[maximum number of elements to return]:' \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
+    '(-o --output)'{-o,--output}'[output format: one of table|yaml|json]:'
+}
+
+function _kumactl_get_retry {
+  _arguments \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
+    '(-o --output)'{-o,--output}'[output format: one of table|yaml|json]:'
+}
+
 function _kumactl_get_secret {
   _arguments \
     '--config-file[path to the configuration file to use]:' \
@@ -503,6 +629,24 @@ function _kumactl_get_secret {
 
 function _kumactl_get_secrets {
   _arguments \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
+    '(-o --output)'{-o,--output}'[output format: one of table|yaml|json]:'
+}
+
+function _kumactl_get_timeout {
+  _arguments \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
+    '(-o --output)'{-o,--output}'[output format: one of table|yaml|json]:'
+}
+
+function _kumactl_get_timeouts {
+  _arguments \
+    '--offset[the offset that indicates starting element of the resources list to retrieve]:' \
+    '--size[maximum number of elements to return]:' \
     '--config-file[path to the configuration file to use]:' \
     '--log-level[log level: one of off|info|debug]:' \
     '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
@@ -581,6 +725,24 @@ function _kumactl_get_traffic-traces {
     '(-o --output)'{-o,--output}'[output format: one of table|yaml|json]:'
 }
 
+function _kumactl_get_zone {
+  _arguments \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
+    '(-o --output)'{-o,--output}'[output format: one of table|yaml|json]:'
+}
+
+function _kumactl_get_zones {
+  _arguments \
+    '--offset[the offset that indicates starting element of the resources list to retrieve]:' \
+    '--size[maximum number of elements to return]:' \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
+    '(-o --output)'{-o,--output}'[output format: one of table|yaml|json]:'
+}
+
 function _kumactl_help {
   _arguments \
     '--config-file[path to the configuration file to use]:' \
@@ -604,6 +766,9 @@ function _kumactl_inspect {
   cmnds)
     commands=(
       "dataplanes:Inspect Dataplanes"
+      "meshes:Inspect Meshes"
+      "services:Inspect Services"
+      "zones:Inspect Zones"
     )
     _describe "command" commands
     ;;
@@ -613,13 +778,47 @@ function _kumactl_inspect {
   dataplanes)
     _kumactl_inspect_dataplanes
     ;;
+  meshes)
+    _kumactl_inspect_meshes
+    ;;
+  services)
+    _kumactl_inspect_services
+    ;;
+  zones)
+    _kumactl_inspect_zones
+    ;;
   esac
 }
 
 function _kumactl_inspect_dataplanes {
   _arguments \
     '--gateway[filter gateway dataplanes]' \
+    '--ingress[filter ingress dataplanes]' \
     '--tag[filter by tag in format of key=value. You can provide many tags]:' \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
+    '(-o --output)'{-o,--output}'[output format: one of table|yaml|json]:'
+}
+
+function _kumactl_inspect_meshes {
+  _arguments \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
+    '(-o --output)'{-o,--output}'[output format: one of table|yaml|json]:'
+}
+
+function _kumactl_inspect_services {
+  _arguments \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
+    '(-o --output)'{-o,--output}'[output format: one of table|yaml|json]:'
+}
+
+function _kumactl_inspect_zones {
+  _arguments \
     '--config-file[path to the configuration file to use]:' \
     '--log-level[log level: one of off|info|debug]:' \
     '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
@@ -641,8 +840,12 @@ function _kumactl_install {
   cmnds)
     commands=(
       "control-plane:Install Kuma Control Plane on Kubernetes"
+      "crds:Install Kuma Custom Resource Definitions on Kubernetes"
+      "dns:Install DNS to Kubernetes"
+      "logging:Install Logging backend in Kubernetes cluster (Loki)"
       "metrics:Install Metrics backend in Kubernetes cluster (Prometheus + Grafana)"
       "tracing:Install Tracing backend in Kubernetes cluster (Jaeger)"
+      "transparent-proxy:Install Transparent Proxy pre-requisites on the host"
     )
     _describe "command" commands
     ;;
@@ -652,32 +855,90 @@ function _kumactl_install {
   control-plane)
     _kumactl_install_control-plane
     ;;
+  crds)
+    _kumactl_install_crds
+    ;;
+  dns)
+    _kumactl_install_dns
+    ;;
+  logging)
+    _kumactl_install_logging
+    ;;
   metrics)
     _kumactl_install_metrics
     ;;
   tracing)
     _kumactl_install_tracing
     ;;
+  transparent-proxy)
+    _kumactl_install_transparent-proxy
+    ;;
   esac
 }
 
 function _kumactl_install_control-plane {
   _arguments \
-    '--admission-server-tls-cert[TLS certificate for the admission web hooks implemented by the Kuma Control Plane]:' \
-    '--admission-server-tls-key[TLS key for the admission web hooks implemented by the Kuma Control Plane]:' \
+    '--cni-bin-dir[set the CNI binary directory]:' \
+    '--cni-chained[enable chained CNI installation]' \
+    '--cni-conf-name[set the CNI configuration name]:' \
     '--cni-enabled[install Kuma with CNI instead of proxy init container]' \
-    '--cni-image[image of Kuma CNI component, if CNIEnabled equals true]:' \
-    '--cni-version[version of the CNIImage]:' \
-    '--control-plane-image[image of the Kuma Control Plane component]:' \
+    '--cni-net-dir[set the CNI install directory]:' \
+    '--cni-registry[registry for the image of the Kuma CNI component]:' \
+    '--cni-repository[repository for the image of the Kuma CNI component]:' \
+    '--cni-version[version of the image of the Kuma CNI component]:' \
+    '--control-plane-registry[registry for the image of the Kuma Control Plane component]:' \
+    '--control-plane-repository[repository for the image of the Kuma Control Plane component]:' \
     '--control-plane-service-name[Service name of the Kuma Control Plane]:' \
-    '--control-plane-version[version shared by all components of the Kuma Control Plane]:' \
-    '--dataplane-image[image of the Kuma Dataplane component]:' \
-    '--dataplane-init-image[init image of the Kuma Dataplane component]:' \
+    '--control-plane-version[version of the image of the Kuma Control Plane component]:' \
+    '--dataplane-init-registry[registry for the init image of the Kuma DataPlane component]:' \
+    '--dataplane-init-repository[repository for the init image of the Kuma DataPlane component]:' \
+    '--dataplane-init-version[version of the init image of the Kuma DataPlane component]:' \
+    '--dataplane-registry[registry for the image of the Kuma DataPlane component]:' \
+    '--dataplane-repository[repository for the image of the Kuma DataPlane component]:' \
+    '--dataplane-version[version of the image of the Kuma DataPlane component]:' \
+    '--env-var[environment variables that will be passed to the control plane]:' \
     '--image-pull-policy[image pull policy that applies to all components of the Kuma Control Plane]:' \
+    '--ingress-drain-time[drain time for Envoy proxy]:' \
+    '--ingress-enabled[install Kuma with an Ingress deployment, using the Data Plane image]' \
+    '--ingress-use-node-port[use NodePort instead of LoadBalancer for the Ingress Service]' \
     '--injector-failure-policy[failue policy of the mutating web hook implemented by the Kuma Injector component]:' \
+    '--kds-global-address[URL of Global Kuma CP (example: grpcs://192.168.0.1:5685)]:' \
+    '--mode[kuma cp modes: one of standalone|remote|global]:' \
     '--namespace[namespace to install Kuma Control Plane to]:' \
-    '--sds-tls-cert[TLS certificate for the SDS server]:' \
-    '--sds-tls-key[TLS key for the SDS server]:' \
+    '--tls-api-server-client-certs-secret[Secret that contains list of .pem certificates that can access admin endpoints of Kuma API on HTTPS]:' \
+    '--tls-api-server-secret[Secret that contains tls.crt, key.crt for protecting Kuma API on HTTPS]:' \
+    '--tls-general-ca-bundle[Base64 encoded CA certificate (the same as in controlPlane.tls.general.secret#ca.crt)]:' \
+    '--tls-general-secret[Secret that contains tls.crt, key.crt and ca.crt for protecting Kuma in-cluster communication]:' \
+    '--tls-kds-global-server-secret[Secret that contains tls.crt, key.crt for protecting cross cluster communication]:' \
+    '--tls-kds-remote-client-secret[Secret that contains ca.crt which was used to sign KDS Global server. Used for CP verification]:' \
+    '--use-node-port[use NodePort instead of LoadBalancer]' \
+    '--without-kubernetes-connection[install without connection to Kubernetes cluster. This can be used for initial Kuma installation, but not for upgrades]' \
+    '--zone[set the Kuma zone name]:' \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:'
+}
+
+function _kumactl_install_crds {
+  _arguments \
+    '--only-missing[install only resources which are not already present in a cluster]' \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:'
+}
+
+function _kumactl_install_dns {
+  _arguments \
+    '--namespace[namespace to look for Kuma Control Plane service]:' \
+    '--port[port of the Kuma DNS server]:' \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:'
+}
+
+function _kumactl_install_logging {
+  _arguments \
+    '--namespace[namespace to install logging to]:' \
     '--config-file[path to the configuration file to use]:' \
     '--log-level[log level: one of off|info|debug]:' \
     '(-m --mesh)'{-m,--mesh}'[mesh to use]:'
@@ -689,6 +950,8 @@ function _kumactl_install_metrics {
     '--kuma-prometheus-sd-image[image name of Kuma Prometheus SD]:' \
     '--kuma-prometheus-sd-version[version of Kuma Prometheus SD]:' \
     '--namespace[namespace to install metrics to]:' \
+    '--without-grafana[disable Grafana resources generation]' \
+    '--without-prometheus[disable Prometheus resources generation]' \
     '--config-file[path to the configuration file to use]:' \
     '--log-level[log level: one of off|info|debug]:' \
     '(-m --mesh)'{-m,--mesh}'[mesh to use]:'
@@ -697,6 +960,67 @@ function _kumactl_install_metrics {
 function _kumactl_install_tracing {
   _arguments \
     '--namespace[namespace to install tracing to]:' \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:'
+}
+
+function _kumactl_install_transparent-proxy {
+  _arguments \
+    '--dry-run[dry run]' \
+    '--exclude-inbound-ports[a comma separated list of inbound ports to exclude from redirect to Envoy]:' \
+    '--exclude-outbound-ports[a comma separated list of outbound ports to exclude from redirect to Envoy]:' \
+    '--kuma-cp-ip[the IP address of the Kuma CP which exposes the DNS service on port 53.]:' \
+    '--kuma-dp-uid[the UID of the user that will run kuma-dp]:' \
+    '--kuma-dp-user[the user that will run kuma-dp]:' \
+    '--modify-iptables[modify the host iptables to redirect the traffic to Envoy]' \
+    '--redirect-all-dns-traffic[redirect all DNS requests to a specified port. Implies --redirect-dns.]' \
+    '--redirect-dns[redirect all DNS requests to the servers in /etc/resolv.conf to a specified port]' \
+    '--redirect-dns-port[the port where the DNS agent is listening]:' \
+    '--redirect-dns-upstream-target-chain[(optional) the iptables chain where the upstream DNS requests should be directed to. It is only applied for IP V4. Use with care.]:' \
+    '--redirect-inbound[redirect the inbound traffic to the Envoy. Should be disabled for Gateway data plane proxies.]' \
+    '--redirect-inbound-port[inbound port redirected to Envoy, as specified in dataplane'\''s `networking.transparentProxying.redirectPortInbound`]:' \
+    '--redirect-inbound-port-v6[IPv6 inbound port redirected to Envoy, as specified in dataplane'\''s `networking.transparentProxying.redirectPortInboundV6`]:' \
+    '--redirect-outbound-port[outbound port redirected to Envoy, as specified in dataplane'\''s `networking.transparentProxying.redirectPortOutbound`]:' \
+    '--skip-resolv-conf[skip modifying the host `/etc/resolv.conf`]' \
+    '--store-firewalld[store the iptables changes with firewalld]' \
+    '--verbose[verbose]' \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:'
+}
+
+
+function _kumactl_uninstall {
+  local -a commands
+
+  _arguments -C \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:' \
+    "1: :->cmnds" \
+    "*::arg:->args"
+
+  case $state in
+  cmnds)
+    commands=(
+      "transparent-proxy:Uninstall Transparent Proxy pre-requisites on the host"
+    )
+    _describe "command" commands
+    ;;
+  esac
+
+  case "$words[1]" in
+  transparent-proxy)
+    _kumactl_uninstall_transparent-proxy
+    ;;
+  esac
+}
+
+function _kumactl_uninstall_transparent-proxy {
+  _arguments \
+    '--dry-run[dry run]' \
+    '--verbose[verbose]' \
     '--config-file[path to the configuration file to use]:' \
     '--log-level[log level: one of off|info|debug]:' \
     '(-m --mesh)'{-m,--mesh}'[mesh to use]:'

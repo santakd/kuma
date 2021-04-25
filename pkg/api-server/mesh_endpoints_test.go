@@ -9,14 +9,16 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	"github.com/Kong/kuma/api/mesh/v1alpha1"
-	api_server "github.com/Kong/kuma/pkg/api-server"
-	config "github.com/Kong/kuma/pkg/config/api-server"
-	"github.com/Kong/kuma/pkg/core/resources/apis/mesh"
-	"github.com/Kong/kuma/pkg/core/resources/model/rest"
-	"github.com/Kong/kuma/pkg/core/resources/store"
-	"github.com/Kong/kuma/pkg/plugins/resources/memory"
-	util_proto "github.com/Kong/kuma/pkg/util/proto"
+	"github.com/kumahq/kuma/api/mesh/v1alpha1"
+	api_server "github.com/kumahq/kuma/pkg/api-server"
+	config "github.com/kumahq/kuma/pkg/config/api-server"
+	"github.com/kumahq/kuma/pkg/core/resources/apis/mesh"
+	"github.com/kumahq/kuma/pkg/core/resources/model"
+	"github.com/kumahq/kuma/pkg/core/resources/model/rest"
+	"github.com/kumahq/kuma/pkg/core/resources/store"
+	"github.com/kumahq/kuma/pkg/metrics"
+	"github.com/kumahq/kuma/pkg/plugins/resources/memory"
+	util_proto "github.com/kumahq/kuma/pkg/util/proto"
 )
 
 var _ = Describe("Resource Endpoints", func() {
@@ -26,8 +28,10 @@ var _ = Describe("Resource Endpoints", func() {
 	var stop chan struct{}
 	t1, _ := time.Parse(time.RFC3339, "2018-07-17T16:05:36.995+00:00")
 	BeforeEach(func() {
-		resourceStore = memory.NewStore()
-		apiServer = createTestApiServer(resourceStore, config.DefaultApiServerConfig())
+		resourceStore = store.NewPaginationStore(memory.NewStore())
+		metrics, err := metrics.NewMetrics("Standalone")
+		Expect(err).ToNot(HaveOccurred())
+		apiServer = createTestApiServer(resourceStore, config.DefaultApiServerConfig(), true, metrics)
 		client = resourceApiClient{
 			apiServer.Address(),
 			"/meshes",
@@ -103,8 +107,8 @@ var _ = Describe("Resource Endpoints", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(string(body)).To(Or(
-				MatchJSON(fmt.Sprintf(`{"items": [%s,%s], "next": null}`, json1, json2)),
-				MatchJSON(fmt.Sprintf(`{"items": [%s,%s], "next": null}`, json2, json1)),
+				MatchJSON(fmt.Sprintf(`{"total": %d, "items": [%s,%s], "next": null}`, 2, json1, json2)),
+				MatchJSON(fmt.Sprintf(`{"total": %d, "items": [%s,%s], "next": null}`, 2, json2, json1)),
 			))
 		})
 	})
@@ -144,7 +148,7 @@ var _ = Describe("Resource Endpoints", func() {
 							{
 								Name: "zipkin-us",
 								Type: v1alpha1.TracingZipkinType,
-								Config: util_proto.MustToStruct(&v1alpha1.ZipkinTracingBackendConfig{
+								Conf: util_proto.MustToStruct(&v1alpha1.ZipkinTracingBackendConfig{
 									Url: "http://zipkin-us:9090/v2/spans",
 								}),
 							},
@@ -156,8 +160,8 @@ var _ = Describe("Resource Endpoints", func() {
 			Expect(response.StatusCode).To(Equal(200))
 
 			// then
-			resource := mesh.MeshResource{}
-			err := resourceStore.Get(context.Background(), &resource, store.GetByKey(name, name))
+			resource := mesh.NewMeshResource()
+			err := resourceStore.Get(context.Background(), resource, store.GetByKey(name, model.NoMesh))
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resource.Spec.Tracing.Backends[0].Name).To(Equal("zipkin-us"))
 		})
@@ -224,8 +228,8 @@ var _ = Describe("Resource Endpoints", func() {
 			Expect(response.StatusCode).To(Equal(200))
 
 			// and
-			resource := mesh.MeshResource{}
-			err := resourceStore.Get(context.Background(), &resource, store.GetByKey(name, name))
+			resource := mesh.NewMeshResource()
+			err := resourceStore.Get(context.Background(), resource, store.GetByKey(name, name))
 			Expect(err).To(Equal(store.ErrorResourceNotFound(resource.GetType(), name, name)))
 		})
 
@@ -240,7 +244,6 @@ var _ = Describe("Resource Endpoints", func() {
 })
 
 func putMeshIntoStore(resourceStore store.ResourceStore, name string, createdAt time.Time) {
-	resource := mesh.MeshResource{}
-	err := resourceStore.Create(context.Background(), &resource, store.CreateByKey(name, name), store.CreatedAt(createdAt))
+	err := resourceStore.Create(context.Background(), mesh.NewMeshResource(), store.CreateByKey(name, model.NoMesh), store.CreatedAt(createdAt))
 	Expect(err).NotTo(HaveOccurred())
 }
