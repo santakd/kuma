@@ -72,7 +72,7 @@ func HasDpInitImageRegistry() bool {
 }
 
 func GetUniversalImage() string {
-	if envBool("KUMA_UNIVERSAL_IMAGE") {
+	if envIsPresent("KUMA_UNIVERSAL_IMAGE") {
 		return os.Getenv("KUMA_UNIVERSAL_IMAGE")
 	}
 
@@ -85,6 +85,10 @@ func GetApiVersion() string {
 
 func HasApiVersion() bool {
 	return envIsPresent(envAPIVersion)
+}
+
+func IsApiV2() bool {
+	return GetApiVersion() == "v2"
 }
 
 func GetHelmChartPath() string {
