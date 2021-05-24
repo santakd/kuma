@@ -1,5 +1,26 @@
 # CHANGELOG
 
+## [1.1.6]
+> Released on  2021/05/13
+
+Changes:
+* feat: expose reuse_connection in healthchecks [#1952](https://github.com//kumahq/kuma/pull/1952)
+* feat: allow tcp/http healthchecks together [#1951](https://github.com//kumahq/kuma/pull/1951)
+* feat: kumactl option to install gateway types [#1950](https://github.com//kumahq/kuma/pull/1950)
+* feat: kumactl option to install kuma demo app [#1932](https://github.com//kumahq/kuma/pull/1932)
+* feat: kumactl option to install Kong ingress [#1929](https://github.com//kumahq/kuma/pull/1929)
+* feat: support all tags in traffic permission [#1902](https://github.com//kumahq/kuma/pull/1902)
+* fix: gateway status was always reporting offline [#1946](https://github.com//kumahq/kuma/pull/1946)
+* fix: don't cache failed calls [#1894](https://github.com//kumahq/kuma/pull/1894)
+  👍contributed by @lahabana
+* chore: add hostname when sending traces to the collector [#1962](https://github.com//kumahq/kuma/pull/1962)
+* docs: prepare api docs generation [#1741](https://github.com//kumahq/kuma/pull/1741)
+* test: azure aks and e2e improvements for the CI [#1880](https://github.com//kumahq/kuma/pull/1880)
+  [#1871](https://github.com//kumahq/kuma/pull/1871)
+  [#1933](https://github.com//kumahq/kuma/pull/1933)
+  [#1953](https://github.com//kumahq/kuma/pull/1953)
+  [#1972](https://github.com//kumahq/kuma/pull/1972)
+
 ## [1.1.5]
 > Released on  2021/04/28
 
@@ -262,7 +283,7 @@ Changes:
 ⚠️ warning: breaking change
 * feat: locality aware load balancing [#1111](https://github.com//kumahq/kuma/pull/1111) 
 * feat: add ExternalService  [#1025](https://github.com//kumahq/kuma/pull/1025) [#1058](https://github.com//kumahq/kuma/pull/1058) [#1062](https://github.com//kumahq/kuma/pull/1062) [#1080](https://github.com//kumahq/kuma/pull/1080) [#1094](https://github.com//kumahq/kuma/pull/1094) 
-* feat: add kafka protocol suport [#1121](https://github.com//kumahq/kuma/pull/1121)
+* feat: add kafka protocol support [#1121](https://github.com//kumahq/kuma/pull/1121)
 * feat: exclude injection from pods that match labels [#1072](https://github.com//kumahq/kuma/pull/1072)
 * feat: create default resources for Mesh [#1141](https://github.com//kumahq/kuma/pull/1141) [#1149](https://github.com/kumahq/kuma/pull/1149) [#1154](https://github.com//kumahq/kuma/pull/1154) [#1155](https://github.com//kumahq/kuma/pull/1155) 
 ⚠️ warning: breaking change
@@ -436,7 +457,7 @@ Changes:
 * feat: added total weight for route configurer [#905](https://github.com//kumahq/kuma/pull/905) 
  👍contributed by @tharun208
 
-* fix: suport dry run [#906](https://github.com//kumahq/kuma/pull/906) 
+* fix: support dry run [#906](https://github.com//kumahq/kuma/pull/906)
 
 * fix: reduce size of access log address [#894](https://github.com//kumahq/kuma/pull/894) 
  👍contributed by @xbauquet 

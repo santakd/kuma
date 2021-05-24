@@ -841,6 +841,7 @@ function _kumactl_install {
     commands=(
       "control-plane:Install Kuma Control Plane on Kubernetes"
       "crds:Install Kuma Custom Resource Definitions on Kubernetes"
+      "demo:Install Kuma demo on Kubernetes"
       "dns:Install DNS to Kubernetes"
       "gateway:Install ingress gateway on Kubernetes"
       "logging:Install Logging backend in Kubernetes cluster (Loki)"
@@ -858,6 +859,9 @@ function _kumactl_install {
     ;;
   crds)
     _kumactl_install_crds
+    ;;
+  demo)
+    _kumactl_install_demo
     ;;
   dns)
     _kumactl_install_dns
@@ -931,6 +935,15 @@ function _kumactl_install_crds {
     '(-m --mesh)'{-m,--mesh}'[mesh to use]:'
 }
 
+function _kumactl_install_demo {
+  _arguments \
+    '--namespace[Namespace to install demo to]:' \
+    '--zone[Zone in which to install demo]:' \
+    '--config-file[path to the configuration file to use]:' \
+    '--log-level[log level: one of off|info|debug]:' \
+    '(-m --mesh)'{-m,--mesh}'[mesh to use]:'
+}
+
 function _kumactl_install_dns {
   _arguments \
     '--namespace[namespace to look for Kuma Control Plane service]:' \
@@ -943,7 +956,7 @@ function _kumactl_install_dns {
 function _kumactl_install_gateway {
   _arguments \
     '--namespace[namespace to install gateway to]:' \
-    '--type[type of gateway to install. Available types: '\''kong'\'']:' \
+    '--type[type of gateway to install. Available types: "kong"]:' \
     '--config-file[path to the configuration file to use]:' \
     '--log-level[log level: one of off|info|debug]:' \
     '(-m --mesh)'{-m,--mesh}'[mesh to use]:'
