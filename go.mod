@@ -9,18 +9,18 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/emicklei/go-restful v2.15.0+incompatible
-	github.com/envoyproxy/go-control-plane v0.9.9-0.20210217033140-668b12f5399d
+	github.com/envoyproxy/go-control-plane v0.10.2-0.20220325020618-49ff273808a1
 	github.com/envoyproxy/protoc-gen-validate v0.4.1
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-errors/errors v1.0.2-0.20180813162953-d98b870cc4e0
 	github.com/go-kit/kit v0.10.0
-	github.com/go-logr/logr v0.1.0
+	github.com/go-logr/logr v0.2.0
 	github.com/go-logr/zapr v0.1.1
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang-migrate/migrate/v4 v4.14.1
-	github.com/golang/protobuf v1.4.3
+	github.com/golang/protobuf v1.5.2
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
-	github.com/gruntwork-io/terratest v0.30.15
+	github.com/gruntwork-io/terratest v0.41.12
 	github.com/hoisie/mustache v0.0.0-20160804235033-6375acf62c69
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/kumahq/kuma/api v0.0.0-00010101000000-000000000000
@@ -39,25 +39,24 @@ require (
 	github.com/sethvargo/go-retry v0.1.0
 	github.com/slok/go-http-metrics v0.9.0
 	github.com/soheilhy/cmux v0.1.5
-	github.com/spf13/cobra v1.0.0
+	github.com/spf13/cobra v1.2.1
 	github.com/spiffe/go-spiffe v0.0.0-20190820222348-6adcf1eecbcc
 	github.com/spiffe/spire v0.12.1
 	github.com/spiffe/spire/proto/spire v0.12.0 // indirect
 	go.uber.org/multierr v1.7.0
-	go.uber.org/zap v1.13.0
-	golang.org/x/sys v0.0.0-20210525143221-35b2ab0089ea
+	go.uber.org/zap v1.17.0
+	golang.org/x/sys v0.1.0
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
-	golang.org/x/tools v0.1.0 // indirect
-	google.golang.org/genproto v0.0.0-20201030142918-24207fddd1c3
-	google.golang.org/grpc v1.38.0
-	google.golang.org/protobuf v1.25.0
+	google.golang.org/genproto v0.0.0-20221201164419-0e50fba7f41c
+	google.golang.org/grpc v1.51.0
+	google.golang.org/protobuf v1.28.1
 	gopkg.in/yaml.v2 v2.4.0
 	helm.sh/helm/v3 v3.3.4
-	k8s.io/api v0.18.14
+	k8s.io/api v0.20.6
 	k8s.io/apiextensions-apiserver v0.18.14
-	k8s.io/apimachinery v0.18.14
+	k8s.io/apimachinery v0.20.6
 	k8s.io/client-go v10.0.0+incompatible
-	k8s.io/utils v0.0.0-20200603063816-c1c6865ac451
+	k8s.io/utils v0.0.0-20201110183641-67b214c5f920
 	sigs.k8s.io/controller-runtime v0.6.4
 	sigs.k8s.io/testing_frameworks v0.1.2
 )
